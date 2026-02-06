@@ -1,0 +1,619 @@
+const express = require("express");
+const router = express.Router();
+const { getPool, sql } = require("../db");
+
+// In-memory cache for ingredients data
+const ingredientsCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Get from cache or return null if expired
+function getCachedData(key) {
+  const cached = ingredientsCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  ingredientsCache.delete(key);
+  return null;
+}
+
+// Set cache with timestamp
+function setCacheData(key, data) {
+  ingredientsCache.set(key, {
+    data: data,
+    timestamp: Date.now(),
+  });
+
+  // Auto cleanup expired entries
+  if (ingredientsCache.size > 1000) {
+    const now = Date.now();
+    for (const [k, v] of ingredientsCache.entries()) {
+      if (now - v.timestamp >= CACHE_TTL) {
+        ingredientsCache.delete(k);
+      }
+    }
+  }
+}
+
+// Get batches for a production order
+router.get("/batches", async (req, res) => {
+  try {
+    const { productionOrderId } = req.query;
+    const parsedId = parseInt(productionOrderId, 10);
+
+    if (isNaN(parsedId)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID đơn hàng không hợp lệ",
+      });
+    }
+
+    // Get batches
+    const batchesResult = await getPool()
+      .request()
+      .input("ProductionOrderId", sql.Int, parsedId)
+      .query(
+        "SELECT * FROM Batches WHERE ProductionOrderId = @ProductionOrderId",
+      );
+
+    res.json({
+      success: true,
+      message: "Lấy danh sách lô sản xuất thành công",
+      data: batchesResult.recordset,
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách lô sản xuất: ", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi: " + error.message,
+    });
+  }
+});
+
+// Get ingredients by ProductCode (IngredientCode == ProductCode of PO)
+router.get("/ingredients-by-product", async (req, res) => {
+  try {
+    const { productionOrderNumber } = req.query;
+
+    if (!productionOrderNumber?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "productionOrderNumber là bắt buộc",
+      });
+    }
+
+    const cacheKey = `ingredients:${productionOrderNumber.trim()}`;
+
+    // Check cache first
+    const cachedResult = getCachedData(cacheKey);
+    if (cachedResult) {
+      return res.json(cachedResult);
+    }
+
+    const request = getPool().request();
+    request.input("prodOrderNum", sql.NVarChar, productionOrderNumber.trim());
+
+    const query = `
+      SELECT
+        i.IngredientCode,
+        i.Quantity,
+        i.UnitOfMeasurement,
+        pm.ItemName,
+        po.ProductCode,
+        po.RecipeVersion
+      FROM ProductionOrders po
+      JOIN RecipeDetails rd 
+        ON rd.ProductCode = po.ProductCode 
+      AND rd.Version = po.RecipeVersion
+      JOIN Processes p 
+        ON p.RecipeDetailsId = rd.RecipeDetailsId
+      JOIN Ingredients i 
+        ON i.ProcessId = p.ProcessId
+      LEFT JOIN ProductMasters pm 
+        ON pm.ItemCode = i.IngredientCode
+      WHERE po.ProductionOrderNumber = @prodOrderNum
+    `;
+
+    const result = await request.query(query);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy dữ liệu ingredients",
+      });
+    }
+
+    const response = {
+      success: true,
+      message: "Lấy danh sách ingredients thành công",
+      productCode: result.recordset[0].ProductCode,
+      recipeVersion: result.recordset[0].RecipeVersion,
+      total: result.recordset.length,
+      data: result.recordset,
+    };
+
+    // Store in cache
+    setCacheData(cacheKey, response);
+
+    res.json(response);
+  } catch (error) {
+    console.error("Lỗi khi lấy ingredients:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+});
+
+// Route: Get material consumptions (refactored)
+const query = `
+  ;WITH BatchCTE AS (
+    SELECT
+      b.BatchNumber AS batchCode,
+      ROW_NUMBER() OVER (ORDER BY b.BatchNumber) AS rn
+    FROM Batches b
+    JOIN ProductionOrders po
+      ON po.ProductionOrderId = b.ProductionOrderId
+    WHERE po.ProductionOrderNumber = @prodOrderNum
+  ),
+  PagedBatch AS (
+    SELECT batchCode
+    FROM BatchCTE
+    WHERE rn BETWEEN @from AND @to
+  ),
+  RecipeIngredient AS (
+    SELECT DISTINCT
+      i.IngredientCode,
+      pm.ItemName
+    FROM ProductionOrders po
+    JOIN RecipeDetails rd
+      ON rd.ProductCode = po.ProductCode
+    AND rd.Version = po.RecipeVersion
+    JOIN Processes p ON p.RecipeDetailsId = rd.RecipeDetailsId
+    JOIN Ingredients i ON i.ProcessId = p.ProcessId
+    LEFT JOIN ProductMasters pm ON pm.ItemCode = i.IngredientCode
+    WHERE po.ProductionOrderNumber = @prodOrderNum
+  ),
+  ExtraIngredient AS (
+    SELECT DISTINCT
+      mc.ingredientCode AS IngredientCode,
+      pm.ItemName
+    FROM MESMaterialConsumption mc
+    JOIN PagedBatch pb
+      ON pb.batchCode = mc.batchCode
+    LEFT JOIN RecipeIngredient r
+      ON r.IngredientCode = mc.ingredientCode
+    LEFT JOIN ProductMasters pm
+      ON pm.ItemCode = mc.ingredientCode
+    WHERE mc.productionOrderNumber = @prodOrderNum
+      AND r.IngredientCode IS NULL
+  )
+
+  -- A. RECIPE INGREDIENT GRID
+  SELECT
+    pb.batchCode,
+    r.IngredientCode,
+    r.ItemName,
+    mc.id,
+    mc.lot,
+    mc.quantity,
+    COALESCE(mc.unitOfMeasurement, ing.UnitOfMeasurement) AS unitOfMeasurement,
+    mc.datetime,
+    mc.operator_ID,
+    mc.supplyMachine,
+    mc.count,
+    mc.request,
+    mc.respone,
+    mc.status1,
+    mc.timestamp
+  FROM PagedBatch pb
+  CROSS JOIN RecipeIngredient r
+  LEFT JOIN MESMaterialConsumption mc
+    ON mc.productionOrderNumber = @prodOrderNum
+  AND mc.batchCode = pb.batchCode
+  AND mc.ingredientCode = r.IngredientCode
+  LEFT JOIN Ingredients ing
+    ON ing.IngredientCode = r.IngredientCode
+
+  UNION ALL
+
+  -- B. EXTRA INGREDIENT (NO GRID)
+  SELECT
+    mc.batchCode,
+    e.IngredientCode,
+    e.ItemName,
+    mc.id,
+    mc.lot,
+    mc.quantity,
+    mc.unitOfMeasurement,
+    mc.datetime,
+    mc.operator_ID,
+    mc.supplyMachine,
+    mc.count,
+    mc.request,
+    mc.respone,
+    mc.status1,
+    mc.timestamp
+  FROM MESMaterialConsumption mc
+  JOIN PagedBatch pb
+    ON pb.batchCode = mc.batchCode
+  JOIN ExtraIngredient e
+    ON e.IngredientCode = mc.ingredientCode
+  WHERE mc.productionOrderNumber = @prodOrderNum
+
+  ORDER BY batchCode, IngredientCode;
+`;
+
+router.post("/material-consumptions", async (req, res) => {
+  try {
+    const { productionOrderNumber, page = 1, limit = 20 } = req.query;
+
+    if (!productionOrderNumber?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "productionOrderNumber là bắt buộc",
+      });
+    }
+
+    const pageNum = Math.max(1, Number(page));
+    const pageLimit = Math.min(100, Math.max(1, Number(limit)));
+
+    const from = (pageNum - 1) * pageLimit + 1;
+    const to = pageNum * pageLimit;
+
+    const pool = getPool();
+    const request = pool.request();
+    request.timeout = 120000;
+
+    request.input("prodOrderNum", sql.NVarChar, productionOrderNumber.trim());
+    request.input("from", sql.Int, from);
+    request.input("to", sql.Int, to);
+
+    const { recordset } = await request.query(query);
+
+    res.json({
+      success: true,
+      message: "Lấy danh sách tiêu hao vật liệu thành công",
+      page: pageNum,
+      limit: pageLimit,
+      data: recordset.map((row) => ({
+        id: row.id,
+        batchCode: row.batchCode,
+        ingredientCode: row.ItemName
+          ? `${row.IngredientCode} - ${row.ItemName}`
+          : row.IngredientCode,
+        lot: row.lot || "",
+        quantity: row.quantity,
+        unitOfMeasurement: row.unitOfMeasurement || "",
+        datetime: row.datetime,
+        operator_ID: row.operator_ID,
+        supplyMachine: row.supplyMachine,
+        count: row.count || 0,
+        request: row.request,
+        respone: row.respone,
+        status1: row.status1,
+        timestamp: row.timestamp,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi Server: " + error.message,
+    });
+  }
+});
+
+// Get material consumptions excluding batches that already have materials recorded
+router.get("/material-consumptions-exclude-batches", async (req, res) => {
+  try {
+    const { productionOrderNumber, page = 1, limit = 20 } = req.query;
+
+    if (!productionOrderNumber?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "productionOrderNumber là bắt buộc",
+      });
+    }
+
+    const pageNum = Math.max(1, Number(page));
+    const pageLimit = Math.min(100, Math.max(1, Number(limit)));
+    const offset = (pageNum - 1) * pageLimit;
+
+    const pool = getPool();
+    const request = pool.request();
+    request.timeout = 120000;
+
+    request.input("prodOrderNum", sql.NVarChar, productionOrderNumber.trim());
+
+    /* ===== COUNT ===== */
+    const countQuery = `
+      SELECT COUNT(*) AS totalCount
+      FROM MESMaterialConsumption mc WITH (NOLOCK)
+      WHERE mc.ProductionOrderNumber = @prodOrderNum
+        AND mc.BatchCode IS NULL
+    `;
+
+    const countResult = await request.query(countQuery);
+    const totalCount = countResult.recordset[0].totalCount;
+
+    if (totalCount === 0) {
+      return res.json({
+        success: true,
+        message: "Không có dữ liệu",
+        page: pageNum,
+        limit: pageLimit,
+        totalCount: 0,
+        totalPages: 0,
+        data: [],
+      });
+    }
+
+    /* ===== DATA ===== */
+    const dataQuery = `
+      SELECT
+        mc.id,
+        mc.productionOrderNumber,
+        mc.batchCode,
+        mc.ingredientCode,
+        pm.ItemName,
+        mc.lot,
+        mc.quantity,
+        mc.unitOfMeasurement,
+        mc.datetime,
+        mc.operator_ID,
+        mc.supplyMachine,
+        mc.count,
+        mc.request,
+        mc.respone,
+        mc.status1,
+        mc.timestamp
+      FROM MESMaterialConsumption mc WITH (NOLOCK)
+      LEFT JOIN ProductMasters pm WITH (NOLOCK)
+        ON pm.ItemCode = mc.ingredientCode
+      WHERE mc.ProductionOrderNumber = @prodOrderNum
+        AND mc.BatchCode IS NULL
+      ORDER BY mc.id DESC
+      OFFSET ${offset} ROWS
+      FETCH NEXT ${pageLimit} ROWS ONLY
+    `;
+
+    const result = await request.query(dataQuery);
+    const totalPages = Math.ceil(totalCount / pageLimit);
+
+    const data = result.recordset.map((row) => ({
+      id: row.id,
+      productionOrderNumber: row.productionOrderNumber,
+      batchCode: row.batchCode, // luôn NULL
+      ingredientCode: row.ItemName
+        ? `${row.ingredientCode} - ${row.ItemName}`
+        : row.ingredientCode,
+      lot: row.lot,
+      quantity: row.quantity,
+      unitOfMeasurement: row.unitOfMeasurement,
+      datetime: row.datetime,
+      operator_ID: row.operator_ID,
+      supplyMachine: row.supplyMachine,
+      count: row.count || 0,
+      request: row.request,
+      respone: row.respone,
+      status1: row.status1,
+      timestamp: row.timestamp,
+    }));
+
+    res.json({
+      success: true,
+      message: "Lấy danh sách tiêu hao vật liệu (không thuộc batch) thành công",
+      page: pageNum,
+      limit: pageLimit,
+      totalCount,
+      totalPages,
+      data,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi Server: " + error.message,
+    });
+  }
+});
+
+// Get batch codes that have materials in MESMaterialConsumption for a production order
+router.get("/batch-codes-with-materials", async (req, res) => {
+  try {
+    const { productionOrderNumber } = req.query;
+
+    if (!productionOrderNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "productionOrderNumber là bắt buộc",
+      });
+    }
+
+    if (!getPool()) {
+      return res.status(500).json({
+        success: false,
+        message: "Database chưa kết nối",
+      });
+    }
+
+    // Get distinct batch codes from MESMaterialConsumption for this production order
+    const result = await getPool()
+      .request()
+      .input("productionOrderNumber", sql.NVarChar, productionOrderNumber)
+      .query(
+        "SELECT DISTINCT batchCode FROM MESMaterialConsumption WHERE ProductionOrderNumber = @productionOrderNumber ORDER BY batchCode ASC",
+      );
+
+    res.json({
+      success: true,
+      message: "Lấy danh sách batch codes có dữ liệu thành công",
+      data: result.recordset.map((row) => ({
+        batchCode: row.batchCode,
+      })),
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy batch codes: ", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi: " + error.message,
+    });
+  }
+});
+
+// Get ProductMasters by ItemCodes
+router.post("/product-masters-by-codes", async (req, res) => {
+  try {
+    const { itemCodes } = req.body;
+
+    if (!itemCodes || !Array.isArray(itemCodes) || itemCodes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "itemCodes phải là một mảng không rỗng",
+      });
+    }
+
+    const pool = getPool();
+    const request = pool.request();
+
+    // Build parameterized query with IN clause
+    const placeholders = itemCodes
+      .map((_, index) => `@ItemCode${index}`)
+      .join(", ");
+
+    // Add each itemCode as a parameter
+    itemCodes.forEach((code, index) => {
+      request.input(`ItemCode${index}`, sql.NVarChar(255), code);
+    });
+
+    const result = await request.query(`
+      SELECT 
+        ItemCode,
+        ItemName
+      FROM ProductMasters
+      WHERE ItemCode IN (${placeholders})
+        AND ItemName IS NOT NULL
+    `);
+
+    res.json({
+      success: true,
+      message: "Lấy thông tin ProductMasters thành công",
+      data: result.recordset,
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy ProductMasters: ", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi: " + error.message,
+    });
+  }
+});
+
+// Get production order detail by ID (MUST be last - catch-all route)
+router.get("/:id", async (req, res) => {
+  try {
+    const productionOrderId = parseInt(req.params.id, 10);
+
+    if (isNaN(productionOrderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID đơn hàng không hợp lệ",
+      });
+    }
+
+    const pool = getPool();
+    const request = pool.request();
+    request.input("ProductionOrderId", sql.Int, productionOrderId);
+
+    const query = `
+      SELECT
+        po.*,
+        pm.ItemName,
+        ing.PlanQuantity AS ProductQuantity,
+        rd.RecipeName,
+
+        -- MES info
+        CASE 
+          WHEN COUNT(mc.Id) > 0 THEN 1 ELSE 0 
+        END AS HasMESData,
+        MAX(mc.BatchCode) AS CurrentBatch,
+
+        -- Batch info
+        COUNT(DISTINCT b.BatchNumber) AS TotalBatches
+      FROM ProductionOrders po
+      LEFT JOIN ProductMasters pm 
+        ON po.ProductCode = pm.ItemCode
+      LEFT JOIN Products ing 
+        ON po.ProductCode = ing.ProductCode
+      LEFT JOIN RecipeDetails rd 
+        ON po.RecipeCode = rd.RecipeCode 
+       AND po.RecipeVersion = rd.Version
+      LEFT JOIN MESMaterialConsumption mc
+        ON mc.ProductionOrderNumber = po.ProductionOrderNumber
+      LEFT JOIN Batches b
+        ON b.ProductionOrderId = po.ProductionOrderId
+      WHERE po.ProductionOrderId = @ProductionOrderId
+      GROUP BY
+        po.ProductionOrderId,
+        po.ProductionLine,
+        po.ProductCode,
+        po.ProductionOrderNumber,
+        po.RecipeCode,
+        po.RecipeVersion,
+        po.Shift,
+        po.PlannedStart,
+        po.PlannedEnd,
+        po.Quantity,
+        po.UnitOfMeasurement,
+        po.LotNumber,
+        po.timestamp,
+        po.Plant,
+        po.Shopfloor,
+        po.ProcessArea,
+        po.Status,
+        pm.ItemName,
+        ing.PlanQuantity,
+        rd.RecipeName
+    `;
+
+    const result = await request.query(query);
+
+    if (!result.recordset.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn hàng",
+      });
+    }
+
+    const order = result.recordset[0];
+
+    const data = {
+      ...order,
+      ProductCode: order.ItemName
+        ? `${order.ProductCode} - ${order.ItemName}`
+        : order.ProductCode,
+      RecipeCode:
+        order.RecipeName && order.RecipeCode
+          ? `${order.RecipeCode} - ${order.RecipeName}`
+          : order.RecipeCode,
+      Status: order.HasMESData,
+      CurrentBatch: order.CurrentBatch || 0,
+      TotalBatches: order.TotalBatches || 0,
+      ProductQuantity: order.ProductQuantity || null,
+    };
+
+    res.json({
+      success: true,
+      message: "Lấy chi tiết đơn hàng thành công",
+      data,
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy chi tiết đơn hàng:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+});
+
+module.exports = router;

@@ -1,0 +1,219 @@
+import { useEffect } from "react";
+
+export default function IndexPage() {
+  const PLANTCODE = import.meta.env.PLANTCODE || "";
+
+  useEffect(() => {
+    // Set page title to match previous EJS behavior
+    document.title = `Quản Lý Nhà Máy - ${PLANTCODE}`;
+
+    // Ensure Font Awesome is available if not already included
+    const existing = document.querySelector(
+      'link[href*="cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"]'
+    );
+    let faLink: HTMLLinkElement | null = null;
+    if (!existing) {
+      faLink = document.createElement("link");
+      faLink.rel = "stylesheet";
+      faLink.href =
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css";
+      document.head.appendChild(faLink);
+    }
+
+    return () => {
+      if (faLink) {
+        document.head.removeChild(faLink);
+      }
+    };
+  }, [PLANTCODE]);
+
+  const css = `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        width: 100%;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 60px;
+        color: white;
+      }
+
+      .header h1 {
+        font-size: 48px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .header p {
+        font-size: 18px;
+        opacity: 0.9;
+      }
+
+      .cards-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-bottom: 40px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 16px;
+        padding: 40px 30px;
+        text-align: center;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        text-decoration: none;
+        color: inherit;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .card-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        color: white;
+      }
+
+      .card.disabled .card-icon {
+        background: linear-gradient(135deg, #bbb 0%, #999 100%);
+      }
+
+      .card-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: #333;
+      }
+
+      .card-description {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.6;
+      }
+
+      .card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .badge {
+        background-color: #ffc107;
+        color: #333;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      @media (max-width: 768px) {
+        .header h1 {
+          font-size: 32px;
+        }
+
+        .header p {
+          font-size: 16px;
+        }
+
+        .cards-container {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+
+        .card {
+          padding: 30px 20px;
+        }
+      }
+  `;
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="container">
+        <div className="header">
+          <h1>Hệ Thống Quản Lý Nhà Máy</h1>
+        </div>
+
+        <div className="cards-container">
+          {/* Card 1: Production Orders */}
+          <a href="/production-orders" className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-industry"></i>
+            </div>
+            <div className="card-title">Lệnh Sản Xuất</div>
+            <div className="card-description">
+              Quản lý và giám sát các lệnh sản xuất (Production Orders)
+            </div>
+          </a>
+
+          {/* Card 2: Recipes */}
+          <a href="/recipes" className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-flask"></i>
+            </div>
+            <div className="card-title">Công Thức</div>
+            <div className="card-description">
+              Quản lý và theo dõi các công thức sản xuất
+            </div>
+          </a>
+
+          {/* Card 3: Products */}
+          <a href="/products" className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-box"></i>
+            </div>
+            <div className="card-title">Sản Phẩm</div>
+            <div className="card-description">
+              Quản lý danh mục sản phẩm và thông tin chi tiết
+            </div>
+          </a>
+
+          {/* Card 4: Materials */}
+          <a href="/materials" className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-layer-group"></i>
+            </div>
+            <div className="card-title">Nguyên Liệu</div>
+            <div className="card-description">
+              Quản lý danh mục nguyên liệu và thông tin chi tiết
+            </div>
+          </a>
+        </div>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <link rel="stylesheet" href="/css/po_recipes_style.css" />
+    <script type="module" src="/js/production_recipes.js" defer></script>
+    <title>Quản Lý Công Thức - Factory Management</title>
+  </head>
+  <body>
+    <!-- Top Navigation Bar -->
+    <div class="topBar">
+      <a href="/" class="nav-left">
+        <i class="fa-solid fa-home"></i>
+        <span>DashBoard</span>
+      </a>
+      <div class="nav-breadcrumb">
+        <a href="/recipes" style="text-decoration: none; color: inherit"
+          >Công Thức</a
+        >
+      </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+      <!-- Header Section -->
+      <div class="header-section">
+        <div class="header-top">
+          <a class="back-btn" href="/">
+            <i class="fa-solid fa-arrow-left"></i>
+          </a>
+          <div class="header-title">
+            <div class="header-top-left">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="#6259ee"
+              >
+                <path
+                  d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z"
+                />
+              </svg>
+              <div class="header-text">
+                <h1>Công thức</h1>
+                <p>Quản lý dữ liệu chính công thức</p>
+              </div>
+            </div>
+            <div class="badge-cs1"><%= process.env.LINE %></div>
+          </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-header">
+              <span>Tổng số Công thức</span>
+              <div class="stat-icon" id="total-icon">
+                <i class="fa-solid fa-flask" style="color: #4e4ad4"></i>
+              </div>
+            </div>
+            <div class="stat-number" id="totalRecipes">2</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-header">
+              <span>Công thức đang Hoạt động</span>
+              <div class="stat-icon" id="active-icon">
+                <i class="fa-solid fa-circle-check" style="color: #47b54d"></i>
+              </div>
+            </div>
+            <div class="stat-number" id="activeRecipes">2</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-header">
+              <span>Tổng Phiên bản</span>
+              <div class="stat-icon" id="version-icon">
+                <i class="fa-solid fa-clock" style="color: #1c96ff"></i>
+              </div>
+            </div>
+            <div class="stat-number" id="totalVersions">2</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search and Filter Section -->
+      <div class="search-section">
+        <div class="search-bar">
+          <i class="fa-solid fa-search"></i>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Tìm kiếm Mã công thức, Tên sản phẩm..."
+          />
+        </div>
+        <div class="view-controls">
+          <button class="view-btn" id="tableViewBtn">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="#6259ee"
+            >
+              <rect x="3" y="4" width="18" height="3" rx="1.5" />
+              <rect x="3" y="10.5" width="18" height="3" rx="1.5" />
+              <rect x="3" y="17" width="18" height="3" rx="1.5" />
+            </svg>
+          </button>
+          <button class="view-btn active" id="gridViewBtn">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="#6259ee"
+            >
+              <rect x="3" y="4" width="7" height="7" rx="2" />
+              <rect x="14" y="4" width="7" height="7" rx="2" />
+              <rect x="14" y="13" width="7" height="7" rx="2" />
+              <rect x="3" y="13" width="7" height="7" rx="2" />
+            </svg>
+          </button>
+          <div
+            class="custom-multiselect"
+            style="position: relative; min-width: 220px"
+          >
+            <div
+              id="statusInput"
+              class="multiselect-input"
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 10px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                cursor: pointer;
+                background: #fff;
+                min-width: 220px;
+              "
+            >
+              <span id="statusSelectedText" style="color: #999"
+                >Select statuses...</span
+              >
+              <i class="fa-solid fa-chevron-down" style="color: #666"></i>
+            </div>
+            <div
+              id="statusDropdown"
+              class="multiselect-dropdown"
+              style="
+                position: absolute;
+                top: 105%;
+                left: 0;
+                background: #fff;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                padding: 8px;
+                width: 220px;
+                display: none;
+                z-index: 50;
+              "
+            >
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 6px 8px;
+                  cursor: pointer;
+                  border-radius: 4px;
+                "
+              >
+                <input
+                  type="checkbox"
+                  id="statusSelectAll"
+                  style="cursor: pointer"
+                />
+                <span style="font-weight: 600">[Select all]</span>
+              </label>
+              <div id="statusOptions"></div>
+            </div>
+          </div>
+          <button class="refresh-btn">
+            <i class="fa-solid fa-rotate-right"></i>
+            Làm mới
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid View -->
+      <div class="grid-view" id="gridView">
+        <!-- JS sẽ render grid-view ở đây -->
+      </div>
+
+      <!-- Table View -->
+      <div class="table-section" id="tableView" style="display: none">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Mã Sản Phẩm</th>
+              <th>Tên Sản Phẩm</th>
+              <th>Mã Công Thức</th>
+              <th>Phiên Bản</th>
+              <th style="text-align: center">Trạng Thái</th>
+              <th>Cập Nhật</th>
+              <th style="text-align: center">Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody id="recipeTableBody">
+            <!-- JS sẽ render table-view ở đây -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination-section">
+        <div class="pagination-controls">
+          <button id="prevPageBtn" class="pagination-btn" onclick="prevPage()">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <span id="pageInfo" class="page-info">Trang 1 / 1</span>
+          <button id="nextPageBtn" class="pagination-btn" onclick="nextPage()">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
