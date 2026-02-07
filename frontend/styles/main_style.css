@@ -1,20 +1,3 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
-  background-color: #f7f6fb;
-  color: #333;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 /* Top Navigation Bar */
 .topBar {
   width: 100%;
@@ -25,6 +8,7 @@ body {
   gap: 40px;
   padding: 0 30px;
   margin-bottom: 20px;
+  margin: 0 auto;
 }
 
 .nav-left {
@@ -961,14 +945,15 @@ body {
 }
 /* Modal Styles */
 .modal {
-  display: none;
   position: fixed;
   z-index: 1000;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background-color: rgba(0, 0, 0, 0.5);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
   animation: fadeIn 0.3s ease;
 }
 

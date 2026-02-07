@@ -29,6 +29,7 @@ router.get("/filters", async (req, res) => {
 
 router.get("/stats", async (req, res) => {
   try {
+    console.log("🔍 Lấy thống kê production orders...");
     // Optimized stats query - avoid full table scan on MESMaterialConsumption
     const statsResult = await getPool().request().query(`
       WITH RunningPO AS (

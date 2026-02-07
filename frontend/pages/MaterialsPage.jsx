@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-
 export default function MaterialsPage() {
   const LINE = import.meta.env.LINE || "CS1";
 
