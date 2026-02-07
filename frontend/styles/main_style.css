@@ -707,6 +707,10 @@
   padding: 20px;
 }
 
+.grid-item {
+  height: 50px;
+}
+
 .grid-card {
   background: white;
   border-radius: 12px;
@@ -729,6 +733,7 @@
   align-items: flex-start;
   gap: 8px;
   margin-bottom: 16px;
+  height: 20px;
 }
 
 .grid-card-top h3 {
@@ -761,6 +766,13 @@
 }
 
 .grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 50px;
+}
+
+.grid-section-2 {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -854,7 +866,6 @@
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid #f0f0f0;
   padding-top: 12px;
 }
 
