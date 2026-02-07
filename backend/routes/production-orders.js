@@ -29,7 +29,6 @@ router.get("/filters", async (req, res) => {
 
 router.get("/stats", async (req, res) => {
   try {
-    console.log("🔍 Lấy thống kê production orders...");
     // Optimized stats query - avoid full table scan on MESMaterialConsumption
     const statsResult = await getPool().request().query(`
       WITH RunningPO AS (
@@ -75,6 +74,7 @@ router.get("/stats/search", async (req, res) => {
     const dateTo = req.query.dateTo || "";
     const processAreas = req.query.processAreas || "";
     const shifts = req.query.shifts || "";
+    const statuses = req.query.statuses || "";
 
     const request = getPool().request();
     const where = [];
@@ -121,7 +121,35 @@ router.get("/stats/search", async (req, res) => {
       where.push(`po.Shift IN (${arr.map((_, i) => `@sh${i}`).join(",")})`);
     }
 
-    const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    let statusCondition = "";
+
+    if (statuses.trim()) {
+      const arr = statuses
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const conds = [];
+
+      if (arr.includes("Đang chạy")) {
+        conds.push("r.ProductionOrderNumber IS NOT NULL");
+      }
+
+      if (arr.includes("Dừng") || arr.includes("Đang chờ")) {
+        conds.push("r.ProductionOrderNumber IS NULL");
+      }
+
+      if (conds.length === 1) {
+        statusCondition = conds[0];
+      } else if (conds.length > 1) {
+        statusCondition = `(${conds.join(" OR ")})`;
+      }
+    }
+
+    const whereClause =
+      where.length || statusCondition
+        ? `WHERE ${[...where, statusCondition].filter(Boolean).join(" AND ")}`
+        : "";
 
     const result = await request.query(`
       WITH RunningPO AS (

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "../styles/main_style.css";
 
 const PLANTCODE = import.meta.env.VITE_PLANTCODE || "MIP";
@@ -8,23 +8,45 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export default function ProductionOrdersPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [processAreas, setProcessAreas] = useState([]);
-  const [statuses, setStatuses] = useState([]);
-  const [shifts, setShifts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(() => {
+    return sessionStorage.getItem("po_searchQuery") || "";
+  });
+  const [dateFrom, setDateFrom] = useState(() => {
+    return sessionStorage.getItem("po_dateFrom") || "";
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    return sessionStorage.getItem("po_dateTo") || "";
+  });
+  const [processAreas, setProcessAreas] = useState(() => {
+    const saved = sessionStorage.getItem("po_processAreas");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [statuses, setStatuses] = useState(() => {
+    const saved = sessionStorage.getItem("po_statuses");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [shifts, setShifts] = useState(() => {
+    const saved = sessionStorage.getItem("po_shifts");
+    return saved ? JSON.parse(saved) : [];
+  });
   const [openProcessArea, setOpenProcessArea] = useState(false);
   const [openStatus, setOpenStatus] = useState(false);
   const [openShift, setOpenShift] = useState(false);
-  const [viewMode, setViewMode] = useState("table"); // "table" or "grid"
-  const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState(() => {
+    return sessionStorage.getItem("po_viewMode") || "table";
+  }); // "table" or "grid"
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = sessionStorage.getItem("po_currentPage");
+    return saved ? parseInt(saved) : 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const pageSize = 20;
-  const [totalRecords, setTotalRecords] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const totalRecordsRef = useRef(0);
   const [productionOrders, setProductionOrders] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Stats data
   const [stats, setStats] = useState({
@@ -89,6 +111,7 @@ export default function ProductionOrdersPage() {
 
   const fetchProductionOrders = useCallback(
     async (page = 1) => {
+      setIsLoading(true);
       try {
         const hasFilters =
           searchQuery ||
@@ -106,8 +129,8 @@ export default function ProductionOrdersPage() {
           limit: pageSize,
         });
 
-        if (page > 1 && totalRecords > 0) {
-          params.append("total", totalRecords);
+        if (page > 1 && totalRecordsRef.current > 0) {
+          params.append("total", totalRecordsRef.current);
         }
 
         if (hasFilters) {
@@ -136,49 +159,20 @@ export default function ProductionOrdersPage() {
         if (res.ok) {
           const data = await res.json();
           setProductionOrders(data.data);
-          setTotalRecords(data.total);
+          totalRecordsRef.current = data.total;
           setTotalPages(data.totalPages || Math.ceil(data.total / pageSize));
           setCurrentPage(data.page || page);
-
-          if (page === 1 && processAreaOptions.length === 0) {
-            const processAreasSet = new Set();
-            productionOrders.forEach((order) => {
-              if (order.ProcessArea && order.ProcessArea.trim() !== "") {
-                processAreasSet.add(order.ProcessArea);
-              }
-            });
-            setProcessAreaOptions(Array.from(processAreasSet).sort());
-          }
-
-          if (page === 1 && shiftOptions.length === 0) {
-            const shiftsSet = new Set();
-            productionOrders.forEach((order) => {
-              if (order.Shift && order.Shift.trim() !== "") {
-                shiftsSet.add(order.Shift);
-              }
-            });
-            setShiftOptions(Array.from(shiftsSet).sort());
-          }
         } else {
           console.error("Failed to fetch production orders:", res.status);
           setProductionOrders([]);
         }
       } catch (error) {
         console.error("Error fetching production orders:", error);
+      } finally {
+        setIsLoading(false);
       }
     },
-    [
-      searchQuery,
-      dateFrom,
-      dateTo,
-      processAreas,
-      statuses,
-      shifts,
-      totalRecords,
-      processAreaOptions.length,
-      shiftOptions.length,
-      productionOrders,
-    ],
+    [searchQuery, dateFrom, dateTo, processAreas, statuses, shifts],
   );
 
   const fetchFilterMetadata = useCallback(async () => {
@@ -262,13 +256,17 @@ export default function ProductionOrdersPage() {
   // Pagination
   const handlePrevPage = () => {
     if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+      const newPage = currentPage - 1;
+      setCurrentPage(newPage);
+      fetchProductionOrders(newPage);
     }
   };
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+      const newPage = currentPage + 1;
+      setCurrentPage(newPage);
+      fetchProductionOrders(newPage);
     }
   };
 
@@ -281,9 +279,60 @@ export default function ProductionOrdersPage() {
 
   // Refresh data
   const handleRefresh = () => {
-    // TODO: Fetch data from API
-    console.log("Refreshing data...");
+    // Clear filters
+    setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setProcessAreas([]);
+    setStatuses([]);
+    setShifts([]);
+    setCurrentPage(1);
+
+    // Clear session storage
+    sessionStorage.removeItem("po_searchQuery");
+    sessionStorage.removeItem("po_dateFrom");
+    sessionStorage.removeItem("po_dateTo");
+    sessionStorage.removeItem("po_processAreas");
+    sessionStorage.removeItem("po_statuses");
+    sessionStorage.removeItem("po_shifts");
+    sessionStorage.removeItem("po_currentPage");
+
+    // Trigger refresh
+    setRefreshKey((prev) => prev + 1);
   };
+
+  // Persist filters to session storage
+  useEffect(() => {
+    sessionStorage.setItem("po_searchQuery", searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_dateFrom", dateFrom);
+  }, [dateFrom]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_dateTo", dateTo);
+  }, [dateTo]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_processAreas", JSON.stringify(processAreas));
+  }, [processAreas]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_statuses", JSON.stringify(statuses));
+  }, [statuses]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_shifts", JSON.stringify(shifts));
+  }, [shifts]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_viewMode", viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    sessionStorage.setItem("po_currentPage", currentPage);
+  }, [currentPage]);
 
   // Get truncated name with ellipsis if longer than 25 chars
   function getTruncatedName(name, maxLength = 100) {
@@ -489,7 +538,33 @@ export default function ProductionOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchStats, fetchFilterMetadata, fetchProductionOrders]);
+  }, [fetchStats, fetchFilterMetadata, fetchProductionOrders, refreshKey]);
+
+  // Derive options from production orders if empty
+  useEffect(() => {
+    if (productionOrders.length > 0) {
+      if (processAreaOptions.length === 0) {
+        const processAreasSet = new Set();
+        productionOrders.forEach((order) => {
+          if (order.ProcessArea && order.ProcessArea.trim() !== "") {
+            processAreasSet.add(order.ProcessArea);
+          }
+        });
+        if (processAreasSet.size > 0)
+          setProcessAreaOptions(Array.from(processAreasSet).sort());
+      }
+
+      if (shiftOptions.length === 0) {
+        const shiftsSet = new Set();
+        productionOrders.forEach((order) => {
+          if (order.Shift && order.Shift.trim() !== "") {
+            shiftsSet.add(order.Shift);
+          }
+        });
+        if (shiftsSet.size > 0) setShiftOptions(Array.from(shiftsSet).sort());
+      }
+    }
+  }, [productionOrders, processAreaOptions.length, shiftOptions.length]);
 
   useEffect(() => {}, [shifts, processAreas, statuses]);
 
@@ -1147,239 +1222,284 @@ export default function ProductionOrdersPage() {
                 </tr>
               </thead>
               <tbody id="orderTableBody">
-                {/* Rows will be rendered by JavaScript */}
-                {productionOrders.map((order, index) => (
-                  <tr key={index}>
-                    <td>
-                      <a
-                        href={`/production-order/${order.ProductionOrderId}`}
-                        className="area-badge-link"
-                        title="Xem chi tiết Batch"
-                        // onClick="saveCurrentState()"
-                      >
-                        <div className="area-badge">
-                          <div>{order.ProductionOrderNumber}</div>
-                        </div>
-                      </a>
-                    </td>
-                    <td>{getTruncatedName(order.ProductCode || "")}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <span className="badge-number">
-                        {order.ProductionLine}
-                      </span>
-                    </td>
-                    <td>{order.RecipeCode}</td>
-                    <td>{order.LotNumber || "N/A"}</td>
-                    <td style={{ textAlign: "center" }}>
-                      {order.ProcessArea || "N/A"}
-                    </td>
-                    <td>{order.Shift || "-"}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <div
+                {isLoading ? (
+                  <tr>
+                    <td
+                      colSpan="11"
+                      style={{ textAlign: "center", padding: "30px" }}
+                    >
+                      <i
+                        className="fa-solid fa-spinner fa-spin"
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          fontSize: "24px",
+                          color: "#6259ee",
+                          marginRight: "10px",
                         }}
-                      >
-                        {formatDate(order.PlannedStart) || "N/A"}
-                      </div>
-                      {order.Quantity || 0} {order.UnitOfMeasurement || ""}
-                    </td>
-                    <td>
-                      {renderProgressBar(
-                        order.CurrentBatch,
-                        order.TotalBatches,
-                        getProgressStatus(order.Status),
-                      )}
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <span
-                        className={`status-badge status-${getStatusType(
-                          order.Status,
-                        )}`}
-                      >
-                        {getStatusIcon(getStatusType(order.Status))}
-                        {getStatusText(order.Status)}
+                      ></i>
+                      <span style={{ fontSize: "16px", color: "#666" }}>
+                        Đang tải dữ liệu...
                       </span>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <button
-                          className="action-view-btn"
-                          title="Xem chi tiết"
-                          onClick={() => handleViewOrder(order)}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                          >
-                            <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
-                          </svg>
-                        </button>
-                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  productionOrders.map((order, index) => (
+                    <tr key={index}>
+                      <td>
+                        <a
+                          href={`/production-order/${order.ProductionOrderId}`}
+                          className="area-badge-link"
+                          title="Xem chi tiết Batch"
+                          // onClick="saveCurrentState()"
+                        >
+                          <div className="area-badge">
+                            <div>{order.ProductionOrderNumber}</div>
+                          </div>
+                        </a>
+                      </td>
+                      <td>{getTruncatedName(order.ProductCode || "")}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className="badge-number">
+                          {order.ProductionLine}
+                        </span>
+                      </td>
+                      <td>{order.RecipeCode}</td>
+                      <td>{order.LotNumber || "N/A"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        {order.ProcessArea || "N/A"}
+                      </td>
+                      <td>{order.Shift || "-"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {formatDate(order.PlannedStart) || "N/A"}
+                        </div>
+                        {order.Quantity || 0} {order.UnitOfMeasurement || ""}
+                      </td>
+                      <td>
+                        {renderProgressBar(
+                          order.CurrentBatch,
+                          order.TotalBatches,
+                          getProgressStatus(order.Status),
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span
+                          className={`status-badge status-${getStatusType(
+                            order.Status,
+                          )}`}
+                        >
+                          {getStatusIcon(getStatusType(order.Status))}
+                          {getStatusText(order.Status)}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <button
+                            className="action-view-btn"
+                            title="Xem chi tiết"
+                            onClick={() => handleViewOrder(order)}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                            >
+                              <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           )}
 
           {viewMode === "grid" && (
             <div className="grid-container">
-              {productionOrders.map((order, index) => (
-                <div key={index}>
-                  <div className="grid-card">
-                    <div className="grid-card-top">
-                      <a
-                        href={`/production-order/${order.ProductionOrderId}`}
-                        className="area-badge-link"
-                        title="Xem chi tiết Batch"
-                      >
-                        <h3
-                          style={{ color: "#5b4ce8" }}
-                          title={order.ProductionOrderNumber || ""}
+              {isLoading ? (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    textAlign: "center",
+                    padding: "40px",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    flexDirection: "column",
+                    gap: "15px",
+                  }}
+                >
+                  <i
+                    className="fa-solid fa-spinner fa-spin"
+                    style={{ fontSize: "32px", color: "#6259ee" }}
+                  ></i>
+                  <span style={{ fontSize: "16px", color: "#666" }}>
+                    Đang tải dữ liệu...
+                  </span>
+                </div>
+              ) : (
+                productionOrders.map((order, index) => (
+                  <div key={index}>
+                    <div className="grid-card">
+                      <div className="grid-card-top">
+                        <a
+                          href={`/production-order/${order.ProductionOrderId}`}
+                          className="area-badge-link"
+                          title="Xem chi tiết Batch"
                         >
-                          {getTruncatedName(
-                            order.ProductionOrderNumber || "",
-                            30,
-                          )}
-                        </h3>
-                      </a>
-                      <span
-                        className={`status-badge status-${getStatusType(
-                          order.Status,
-                        )}`}
-                      >
-                        {getStatusIcon(getStatusType(order.Status))}
-                        {getStatusText(order.Status)}
-                      </span>
-                    </div>
-
-                    <div className="grid-card-body">
-                      <div className="grid-item">
-                        <div>
-                          Product Code:{" "}
-                          <span className="grid-label">
-                            {order.ProductCode || "N/A"}
-                          </span>
-                        </div>
-                        <div className="grid-value">
-                          {order.Quantity || 0}
-                          {order.UnitOfMeasurement || ""}
-                        </div>
-                      </div>
-
-                      <div className="grid-section">
-                        <div className="grid-section-label">CÔNG THỨC</div>
-                        <div className="grid-section-content">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="red"
+                          <h3
+                            style={{ color: "#5b4ce8" }}
+                            title={order.ProductionOrderNumber || ""}
                           >
-                            <path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" />
-                          </svg>
-                          <span className="recipe-badge">
-                            {order.RecipeCode || "N/A"}
-                          </span>
-                          <span className="recipe-tag">
-                            {order.RecipeVersion || ""}
-                          </span>
+                            {getTruncatedName(
+                              order.ProductionOrderNumber || "",
+                              30,
+                            )}
+                          </h3>
+                        </a>
+                        <span
+                          className={`status-badge status-${getStatusType(
+                            order.Status,
+                          )}`}
+                        >
+                          {getStatusIcon(getStatusType(order.Status))}
+                          {getStatusText(order.Status)}
+                        </span>
+                      </div>
+
+                      <div className="grid-card-body">
+                        <div className="grid-item">
+                          <div>
+                            Product Code:{" "}
+                            <span className="grid-label">
+                              {order.ProductCode || "N/A"}
+                            </span>
+                          </div>
+                          <div className="grid-value">
+                            {order.Quantity || 0}
+                            {order.UnitOfMeasurement || ""}
+                          </div>
+                        </div>
+
+                        <div className="grid-section">
+                          <div className="grid-section-label">CÔNG THỨC</div>
+                          <div className="grid-section-content">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="red"
+                            >
+                              <path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" />
+                            </svg>
+                            <span className="recipe-badge">
+                              {order.RecipeCode || "N/A"}
+                            </span>
+                            <span className="recipe-tag">
+                              {order.RecipeVersion || ""}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid-section-2">
+                          <div className="grid-section-label">LÔ SX</div>
+                          <div className="grid-section-value">
+                            {order.LotNumber || "0 / 0"}
+                          </div>
+                        </div>
+
+                        <div className="grid-section-2">
+                          <div className="grid-section-label">Ca</div>
+                          <div className="grid-section-value">
+                            {order.Shift || "-"}
+                          </div>
+                        </div>
+
+                        <div className="grid-section-2">
+                          <div className="grid-section-label">Process Area</div>
+                          <div className="grid-section-value">
+                            {order.ProcessArea || "N/A"}
+                          </div>
+                        </div>
+
+                        <div className="grid-section-2">
+                          <div className="grid-section-label">
+                            Batch hiện tại
+                          </div>
+                          <div className="grid-section-value">
+                            {order.CurrentBatch !== null &&
+                            order.CurrentBatch !== undefined
+                              ? order.CurrentBatch
+                              : "N/A"}
+                          </div>
+                        </div>
+
+                        <div className="grid-section">
+                          <div className="grid-section-label">LỊCH TRÌNH</div>
+                          <div className="grid-schedule">
+                            <span className="schedule-start">
+                              {formatDate(order.PlannedStart) || "N/A"}
+                            </span>
+                            <span className="schedule-end">
+                              Hạn: {formatDate(order.PlannedEnd) || "N/A"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid-section">
+                          <div className="grid-section-label">TIẾN ĐỘ</div>
+                          <div className="grid-progress">
+                            <div
+                              className="progress-bar"
+                              style={{
+                                width: `${Math.round(
+                                  ((parseInt(order.CurrentBatch) || 0) /
+                                    (parseInt(order.TotalBatches) || 1)) *
+                                    100,
+                                )}%`,
+                              }}
+                            ></div>
+                          </div>
+                          <div className="progress-text">
+                            {Math.round(
+                              ((parseInt(order.CurrentBatch) || 0) /
+                                (parseInt(order.TotalBatches) || 1)) *
+                                100,
+                            )}
+                            %
+                          </div>
                         </div>
                       </div>
 
-                      <div className="grid-section-2">
-                        <div className="grid-section-label">LÔ SX</div>
-                        <div className="grid-section-value">
-                          {order.LotNumber || "0 / 0"}
-                        </div>
+                      <div className="grid-card-footer">
+                        <button
+                          className="action-btn-grid-primary"
+                          onClick={() => handleViewOrder(order)}
+                        >
+                          Xem Chi tiết
+                        </button>
                       </div>
-
-                      <div className="grid-section-2">
-                        <div className="grid-section-label">Ca</div>
-                        <div className="grid-section-value">
-                          {order.Shift || "-"}
-                        </div>
-                      </div>
-
-                      <div className="grid-section-2">
-                        <div className="grid-section-label">Process Area</div>
-                        <div className="grid-section-value">
-                          {order.ProcessArea || "N/A"}
-                        </div>
-                      </div>
-
-                      <div className="grid-section-2">
-                        <div className="grid-section-label">Batch hiện tại</div>
-                        <div className="grid-section-value">
-                          {order.CurrentBatch !== null &&
-                          order.CurrentBatch !== undefined
-                            ? order.CurrentBatch
-                            : "N/A"}
-                        </div>
-                      </div>
-
-                      <div className="grid-section">
-                        <div className="grid-section-label">LỊCH TRÌNH</div>
-                        <div className="grid-schedule">
-                          <span className="schedule-start">
-                            {formatDate(order.PlannedStart) || "N/A"}
-                          </span>
-                          <span className="schedule-end">
-                            Hạn: {formatDate(order.PlannedEnd) || "N/A"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid-section">
-                        <div className="grid-section-label">TIẾN ĐỘ</div>
-                        <div className="grid-progress">
-                          <div
-                            className="progress-bar"
-                            style={{
-                              width: `${Math.round(
-                                ((parseInt(order.CurrentBatch) || 0) /
-                                  (parseInt(order.TotalBatches) || 1)) *
-                                  100,
-                              )}%`,
-                            }}
-                          ></div>
-                        </div>
-                        <div className="progress-text">
-                          {Math.round(
-                            ((parseInt(order.CurrentBatch) || 0) /
-                              (parseInt(order.TotalBatches) || 1)) *
-                              100,
-                          )}
-                          %
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid-card-footer">
-                      <button
-                        className="action-btn-grid-primary"
-                        onClick={() => handleViewOrder(order)}
-                      >
-                        Xem Chi tiết
-                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 
