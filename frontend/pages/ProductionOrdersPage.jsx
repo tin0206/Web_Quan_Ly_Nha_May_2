@@ -12,10 +12,18 @@ export default function ProductionOrdersPage() {
     return sessionStorage.getItem("po_searchQuery") || "";
   });
   const [dateFrom, setDateFrom] = useState(() => {
-    return sessionStorage.getItem("po_dateFrom") || "";
+    const saved = sessionStorage.getItem("po_dateFrom");
+    if (saved !== null) return saved;
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
   });
   const [dateTo, setDateTo] = useState(() => {
-    return sessionStorage.getItem("po_dateTo") || "";
+    const saved = sessionStorage.getItem("po_dateTo");
+    if (saved !== null) return saved;
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
   });
   const [processAreas, setProcessAreas] = useState(() => {
     const saved = sessionStorage.getItem("po_processAreas");
@@ -210,6 +218,7 @@ export default function ProductionOrdersPage() {
     } else {
       setProcessAreas([...processAreas, area]);
     }
+    setCurrentPage(1);
   };
 
   const handleStatusChange = (status) => {
@@ -218,6 +227,7 @@ export default function ProductionOrdersPage() {
     } else {
       setStatuses([...statuses, status]);
     }
+    setCurrentPage(1);
   };
 
   const handleShiftChange = (shift) => {
@@ -226,6 +236,7 @@ export default function ProductionOrdersPage() {
     } else {
       setShifts([...shifts, shift]);
     }
+    setCurrentPage(1);
   };
 
   // Select all functionality
@@ -235,14 +246,17 @@ export default function ProductionOrdersPage() {
     } else {
       setProcessAreas([]);
     }
+    setCurrentPage(1);
   };
 
   const handleSelectAllStatus = (checked) => {
     if (checked) {
-      setStatuses([...statusOptions]);
+      const allStatuses = statusOptions.map((o) => o.value);
+      setStatuses(allStatuses);
     } else {
       setStatuses([]);
     }
+    setCurrentPage(1);
   };
 
   const handleSelectAllShift = (checked) => {
@@ -251,29 +265,25 @@ export default function ProductionOrdersPage() {
     } else {
       setShifts([]);
     }
+    setCurrentPage(1);
   };
 
   // Pagination
   const handlePrevPage = () => {
     if (currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      fetchProductionOrders(newPage);
+      setCurrentPage((prev) => prev - 1);
     }
   };
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
-      const newPage = currentPage + 1;
-      setCurrentPage(newPage);
-      fetchProductionOrders(newPage);
+      setCurrentPage((prev) => prev + 1);
     }
   };
 
   // View order details
   const handleViewOrder = (order) => {
     setSelectedOrder(order);
-    console.log(order);
     setShowViewModal(true);
   };
 
@@ -281,8 +291,16 @@ export default function ProductionOrdersPage() {
   const handleRefresh = () => {
     // Clear filters
     setSearchQuery("");
-    setDateFrom("");
-    setDateTo("");
+
+    // Reset dates to defaults
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    setDateFrom(yesterday.toISOString().split("T")[0]);
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setDateTo(tomorrow.toISOString().split("T")[0]);
+
     setProcessAreas([]);
     setStatuses([]);
     setShifts([]);
@@ -528,9 +546,9 @@ export default function ProductionOrdersPage() {
 
     const run = async () => {
       if (cancelled) return;
-      await fetchStats();
+      await fetchStats(); // Stats likely depend on filters, which are captured in scope of fetchStats
       await fetchFilterMetadata();
-      await fetchProductionOrders(1);
+      await fetchProductionOrders(currentPage);
     };
 
     run();
@@ -538,7 +556,13 @@ export default function ProductionOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchStats, fetchFilterMetadata, fetchProductionOrders, refreshKey]);
+  }, [
+    fetchStats,
+    fetchFilterMetadata,
+    fetchProductionOrders,
+    refreshKey,
+    currentPage,
+  ]);
 
   // Derive options from production orders if empty
   useEffect(() => {
@@ -708,7 +732,10 @@ export default function ProductionOrdersPage() {
                 id="searchInput"
                 placeholder="Tìm kiếm Lệnh SX, Mã sản phẩm..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
             <div
@@ -729,7 +756,10 @@ export default function ProductionOrdersPage() {
                   type="date"
                   id="dateFrom"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   style={{
                     padding: "8px 12px",
                     border: "1px solid #ddd",
@@ -748,7 +778,10 @@ export default function ProductionOrdersPage() {
                   type="date"
                   id="dateTo"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   style={{
                     padding: "8px 12px",
                     border: "1px solid #ddd",
