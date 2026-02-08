@@ -58,10 +58,10 @@ export default function ProductionOrdersPage() {
 
   // Stats data
   const [stats, setStats] = useState({
-    totalOrders: 6,
-    running: 7,
-    completed: 2,
-    pending: 1,
+    totalOrders: null,
+    running: null,
+    completed: null,
+    pending: null,
   });
 
   // Available options
@@ -1279,7 +1279,7 @@ export default function ProductionOrdersPage() {
                     <tr key={index}>
                       <td>
                         <a
-                          href={`/production-order/${order.ProductionOrderId}`}
+                          href={`/production-order-detail/${order.ProductionOrderId}`}
                           className="area-badge-link"
                           title="Xem chi tiết Batch"
                           // onClick="saveCurrentState()"
@@ -1392,7 +1392,7 @@ export default function ProductionOrdersPage() {
                     <div className="grid-card">
                       <div className="grid-card-top">
                         <a
-                          href={`/production-order/${order.ProductionOrderId}`}
+                          href={`/production-order-detail/${order.ProductionOrderId}`}
                           className="area-badge-link"
                           title="Xem chi tiết Batch"
                         >

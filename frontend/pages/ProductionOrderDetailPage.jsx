@@ -1,16 +1,265 @@
-import { useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import "../styles/main_style.css";
+import "../styles/po_detail_style.css";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 export default function ProductionOrderDetailPage() {
-  const { orderId } = useParams(); // /production-orders/:orderId
+  const { orderId } = useParams();
+  const [currentTab, setCurrentTab] = useState("batches");
+  const [order, setOrder] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [ingredientsTotalsByUOM, setIngredientsTotalsByUOM] = useState({});
+  const [materialFilterType, setMaterialFilterType] = useState("all");
+  const batchesPerPage = 10;
+  const materialsPerPage = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
+  const [materialsTotalPages, setMaterialsTotalPages] = useState(1);
+  const [materialsTotalCount, setMaterialsTotalCount] = useState(0);
+  const [allMaterials, setAllMaterials] = useState([]);
+  const [materialsPlannedBatches, setMaterialsPlannedBatches] = useState([]);
+  const [materialsUnplannedBatches, setMaterialsUnplannedBatches] = useState(
+    [],
+  );
+  const [batchCodesWithMaterials, setBatchCodesWithMaterials] = useState([]);
+  const [selectedBatchCode, setSelectedBatchCode] = useState(null);
 
   useEffect(() => {
-    // TODO: migrate logic từ production_order_detail.js vào đây
-    // initProductionOrderDetail(orderId);
+    document.title = `Chi tiết Production Order #${orderId}`;
   }, [orderId]);
+
+  function formatDate(dateString) {
+    if (!dateString) return "";
+
+    // Chỉ lấy phần ngày
+    const datePart = dateString.split("T")[0];
+    const [year, month, day] = datePart.split("-");
+
+    if (!year || !month || !day) return dateString;
+
+    return `${day}/${month}/${year}`;
+  }
+
+  function getStatusText(status) {
+    if (typeof status === "number") {
+      switch (status) {
+        case 0:
+          return "Đang chờ";
+        case 1:
+          return "Đang chạy";
+        case 2:
+          return "Hoàn thành";
+        default:
+          return "Không xác định";
+      }
+    }
+    return String(status);
+  }
+
+  function mergeBatchesRemoveDuplicate(arr1, arr2) {
+    const map = new Map();
+
+    arr1.forEach((batch) => {
+      if (batch.BatchNumber) {
+        map.set(batch.BatchNumber, batch);
+      }
+    });
+
+    let foundNull = false;
+
+    arr2.forEach((batch) => {
+      if (batch.BatchNumber && !map.has(batch.BatchNumber)) {
+        map.set(batch.BatchNumber, batch);
+      } else if (batch.BatchNumber === null) {
+        if (!foundNull) {
+          foundNull = true;
+          map.set(batch.BatchNumber, batch);
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }
+
+  const uniqueBatchNumbers = useMemo(() => {
+    return [
+      ...new Set(
+        batches.map((b) => (b.BatchNumber === null ? "null" : b.BatchNumber)),
+      ),
+    ];
+  }, [batches]);
+
+  const fetchOrderDetails = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/production-order-detail/${orderId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setOrder(data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching order details:", error);
+    }
+  }, [orderId]);
+
+  const fetchBatches = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/production-order-detail/batches?productionOrderId=${orderId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      let currentBatches = [];
+
+      if (res.ok) {
+        const data = await res.json();
+        currentBatches = data.data || [];
+        // Only set batches here if we can't proceed to merge yet
+        if (!order?.ProductionOrderNumber) {
+          setBatches(currentBatches);
+          return;
+        }
+      }
+
+      if (!order?.ProductionOrderNumber) return;
+
+      const res2 = await fetch(
+        `${API_BASE_URL}/api/production-order-detail/batch-codes-with-materials?productionOrderNumber=${order.ProductionOrderNumber}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      if (res2.ok) {
+        const data2 = await res2.json();
+        const batchCodeWithMaterials = data2.data;
+        setBatchCodesWithMaterials(batchCodeWithMaterials);
+
+        // Use currentBatches instead of state batches to avoid infinite loop
+        const mergedBatches = mergeBatchesRemoveDuplicate(
+          currentBatches,
+          batchCodeWithMaterials,
+        );
+        setBatches(mergedBatches);
+      } else {
+        // Fallback if second API fails
+        setBatches(currentBatches);
+      }
+    } catch (error) {
+      console.error("Error fetching batches:", error);
+    }
+  }, [order, orderId]);
+
+  const buildIngredientTotals = (ingredientsData) => {
+    const totals = {};
+
+    ingredientsData.forEach((item) => {
+      const code = item.IngredientCode;
+      if (!totals[code]) {
+        totals[code] = {
+          total: 0,
+          unitOfMeasurement: item.UnitOfMeasurement,
+        };
+      }
+      totals[code].total += parseFloat(item.Quantity) || 0;
+    });
+
+    return totals;
+  };
+
+  const fetchMaterials = useCallback(async () => {
+    if (!order) return;
+
+    // Ingredients
+    if (Object.keys(ingredientsTotalsByUOM).length === 0) {
+      const res = await fetch(
+        `${API_BASE_URL}/api/production-order-detail/ingredients-by-product?productionOrderNumber=${order.ProductionOrderNumber}`,
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setIngredientsTotalsByUOM(buildIngredientTotals(data.data || []));
+      }
+    }
+
+    // Materials
+    if (allMaterials.length === 0) {
+      const query = new URLSearchParams({
+        productionOrderNumber: order.ProductionOrderNumber,
+        limit: 999999,
+      });
+
+      const [res1, res2] = await Promise.all([
+        fetch(
+          `${API_BASE_URL}/api/production-order-detail/material-consumptions?${query}`,
+        ),
+        fetch(
+          `${API_BASE_URL}/api/production-order-detail/material-consumptions-exclude-batches?${query}`,
+        ),
+      ]);
+
+      const planned = res1.ok ? (await res1.json()).data : [];
+      const unplanned = res2.ok ? (await res2.json()).data : [];
+
+      setMaterialsPlannedBatches(planned);
+      setMaterialsUnplannedBatches(unplanned);
+      setAllMaterials([...planned, ...unplanned]);
+    }
+  }, [order, allMaterials.length, ingredientsTotalsByUOM]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) return;
+      await fetchOrderDetails();
+      await fetchBatches();
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchBatches, fetchOrderDetails]);
+
+  useEffect(() => {
+    if (currentTab !== "materials") return;
+    if (!order?.ProductionOrderNumber) return;
+
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled) return;
+      await fetchMaterials();
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTab, order, fetchMaterials]);
 
   return (
     <div className="main-container">
-      {/* Header */}
       <div className="header-container">
         <a className="back-btn" href="/production-orders">
           <i className="fa-solid fa-arrow-left"></i>
@@ -23,100 +272,716 @@ export default function ProductionOrderDetailPage() {
         </div>
       </div>
 
-      {/* Order Detail */}
-      <div id="orderDetails" style={{ display: "none" }}>
-        <div className="card">
-          <div className="detail-grid">
-            {[
-              ["Mã Lệnh SX", "detailOrderNumber"],
-              ["Mã Sản Phẩm", "detailProductCode"],
-              ["Dây Chuyền", "detailProductionLine"],
-              ["Công Thức", "detailRecipeCode"],
-              ["Phiên Bản Công Thức", "detailRecipeVersion"],
-              ["Lô SX", "detailLotNumber"],
-              ["Số Lượng", "detailQuantity"],
-              ["Batch hiện tại", "detailCurrentBatch"],
-              ["Ngày Bắt Đầu", "detailPlannedStart"],
-              ["Ngày Kết Thúc", "detailPlannedEnd"],
-              ["Ca Làm", "detailShift"],
-              ["Tiến Độ", "detailProgress"],
-              ["Trạng Thái", "detailStatus"],
-              ["Plant", "detailPlant"],
-              ["Shop Floor", "detailShopfloor"],
-              ["Process Area", "detailProcessArea"],
-            ].map(([label, id]) => (
-              <div key={id}>
-                <label>{label}</label>
-                <p id={id}>-</p>
-              </div>
-            ))}
+      <div>
+        <div id="orderDetails">
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "8px",
+              padding: "30px",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+              margin: "0 auto",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                gap: "20px",
+                textAlign: "left",
+              }}
+            >
+              {[
+                {
+                  label: "Mã Lệnh SX",
+                  id: "detailOrderNumber",
+                  value: order?.ProductionOrderNumber || "-",
+                },
+                {
+                  label: "Mã Sản Phẩm",
+                  id: "detailProductCode",
+                  value: order?.ProductCode || "-",
+                },
+                {
+                  label: "Dây Chuyền",
+                  id: "detailProductionLine",
+                  value: order?.ProductionLine || "-",
+                },
+                {
+                  label: "Công Thức",
+                  id: "detailRecipeCode",
+                  value: order?.RecipeCode || "-",
+                },
+                {
+                  label: "Phiên Bản Công Thức",
+                  id: "detailRecipeVersion",
+                  value: order?.RecipeVersion || "-",
+                },
+                {
+                  label: "Lô SX",
+                  id: "detailLotNumber",
+                  value: order?.LotNumber || "-",
+                },
+                {
+                  label: "Số Lượng",
+                  id: "detailQuantity",
+                  value: order?.Quantity || "-",
+                },
+                {
+                  label: "Batch hiện tại",
+                  id: "detailCurrentBatch",
+                  value:
+                    order?.CurrentBatch || 0 + "/" + order?.TotalBatches || "0",
+                },
+                {
+                  label: "Ngày Bắt Đầu",
+                  id: "detailPlannedStart",
+                  value: formatDate(order?.PlannedStart),
+                },
+                {
+                  label: "Ngày Kết Thúc",
+                  id: "detailPlannedEnd",
+                  value: formatDate(order?.PlannedEnd),
+                },
+                {
+                  label: "Ca Làm",
+                  id: "detailShift",
+                  value: order?.Shift || "-",
+                },
+                {
+                  label: "Tiến Độ",
+                  id: "detailProgress",
+                  value:
+                    Math.round(
+                      ((parseInt(order?.CurrentBatch) || 0) /
+                        (parseInt(order?.TotalBatches) || 1)) *
+                        100,
+                    ) + "%",
+                },
+                {
+                  label: "Trạng Thái",
+                  id: "detailStatus",
+                  value: getStatusText(order?.Status) || "-",
+                },
+                {
+                  label: "Plant",
+                  id: "detailPlant",
+                  value: order?.Plant || "-",
+                },
+                {
+                  label: "Shop Floor",
+                  id: "detailShopfloor",
+                  value: order?.ShopFloor || "-",
+                },
+                {
+                  label: "Process Area",
+                  id: "detailProcessArea",
+                  value: order?.ProcessArea || "-",
+                },
+              ].map((item) => (
+                <div key={item.id}>
+                  <label style={{ fontWeight: "bold", color: "#666" }}>
+                    {item.label}
+                  </label>
+                  <p style={{ margin: "5px 0", fontSize: "16px" }} id={item.id}>
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div id="tabsBar" className="tabs-bar">
-        <button className="tab-button active" id="tab-batches">
-          Production Batches
-        </button>
-        <button className="tab-button" id="tab-materials">
-          Material Consumption
-        </button>
-      </div>
-
-      {/* Batches */}
-      <div id="batchesContent">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Batch ID</th>
-              <th>Batch Number</th>
-              <th>Plan Quantity</th>
-              <th>Status</th>
-              <th>View</th>
-            </tr>
-          </thead>
-          <tbody id="batchesTableBody">
-            <tr>
-              <td colSpan="5" className="loading-row">
-                Đang tải dữ liệu...
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div id="paginationControls" className="pagination">
-          <button id="prevBtn">‹</button>
-          <span id="pageInfo">Trang 0 / 1</span>
-          <button id="nextBtn">›</button>
-        </div>
-      </div>
-
-      {/* Materials */}
-      <div id="materialsContent" style={{ display: "none" }}>
-        <div className="filter-card">
-          <label>Batch Number</label>
-          <div id="filterBatchCodeOptions"></div>
+        <div
+          id="tabsBar"
+          style={{
+            marginTop: "20px",
+            borderBottom: "2px solid #ddd",
+            display: "flex",
+            gap: "10px",
+          }}
+        >
+          <button
+            className={`tab-button${currentTab === "batches" ? " active" : ""}`}
+            id="tab-batches"
+            onClick={() => setCurrentTab("batches")}
+          >
+            Production Batches
+          </button>
+          <button
+            className={`tab-button${currentTab === "materials" ? " active" : ""}`}
+            id="tab-materials"
+            onClick={() => setCurrentTab("materials")}
+          >
+            Material Consumption
+          </button>
         </div>
 
-        <div id="materialsTableWrapper">
-          <table className="data-table wide">
+        <div
+          id="batchesContent"
+          style={{
+            marginTop: "20px",
+            display: currentTab === "batches" ? "block" : "none",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              background: "white",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+            }}
+          >
             <thead>
-              <tr>
-                <th>ID</th>
-                <th>Batch Number</th>
-                <th>Ingredient Code</th>
-                <th>Lot</th>
-                <th>Plan Quantity</th>
-                <th>Actual Quantity</th>
-                <th>Consumption Date</th>
-                <th>Status</th>
-                <th>View</th>
+              <tr
+                style={{
+                  backgroundColor: "#f5f5f5",
+                  borderBottom: "2px solid #ddd",
+                }}
+              >
+                {[
+                  "Batch ID",
+                  "Batch Number",
+                  "Plan Quantity",
+                  "Status",
+                  "View",
+                ].map((header) => (
+                  <th
+                    key={header}
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody id="batchesTableBody">
+              {batches.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="5"
+                    style={{
+                      padding: "20px",
+                      textAlign: "center",
+                      color: "#999",
+                    }}
+                  >
+                    Đang tải dữ liệu...
+                  </td>
+                </tr>
+              )}
+
+              {batches.length > 0 &&
+                batches.map((batch, index) => {
+                  let status = "";
+                  let bgColor = "";
+                  const isRunning = batchCodesWithMaterials.some(
+                    (b) => b.batchCode === batch.BatchNumber,
+                  );
+                  if (isRunning) {
+                    status = "Đang chạy";
+                    bgColor = "#d4edda";
+                  } else {
+                    status = "Đang chờ";
+                    bgColor = "#fff3cd";
+                  }
+
+                  return (
+                    <tr
+                      key={index}
+                      style={{
+                        borderBottom: "1px solid #ddd",
+                        backgroundColor: bgColor,
+                      }}
+                    >
+                      <td style={{ padding: "12px", textAlign: "center" }}>
+                        {batch.BatchId}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center" }}>
+                        {batch.BatchNumber}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center" }}>
+                        {batch.Quantity} {batch.UnitOfMeasurement}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center" }}>
+                        {status}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center" }}>
+                        <button
+                          className="viewMaterialsBtn"
+                          data-batch-code={batch.BatchNumber}
+                          style={{
+                            background: "#007bff",
+                            color: "white",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: "8px 12px",
+                            borderRadius: "4px",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            transition: "background 0.2s",
+                          }}
+                          title="View Materials"
+                        >
+                          View Materials
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+
+          <div
+            id="paginationControls"
+            style={{
+              marginTop: "20px",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "15px",
+              padding: "15px 0 20px 0",
+            }}
+          >
+            <button
+              id="prevBtn"
+              style={{
+                background: "#007aff",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background 0.3s ease, opacity 0.3s ease",
+                fontSize: "16px",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <span
+              id="pageInfo"
+              style={{
+                fontSize: "14px",
+                color: "#666",
+                fontWeight: "500",
+                minWidth: "120px",
+                textAlign: "center",
+              }}
+            >
+              Trang 0 / 1
+            </span>
+            <button
+              id="nextBtn"
+              style={{
+                background: "#007aff",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background 0.3s ease, opacity 0.3s ease",
+                fontSize: "16px",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="materialsContent"
+          style={{
+            display: currentTab === "materials" ? "block" : "none",
+            marginTop: "20px",
+          }}
+        >
+          {/* Batch Number Selection Section */}
+          <div
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              marginBottom: "20px",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+            }}
+          >
+            <label
+              style={{
+                fontWeight: "bold",
+                color: "#333",
+                display: "block",
+                marginBottom: "12px",
+                fontSize: "14px",
+              }}
+            >
+              Batch Number
+            </label>
+            <div
+              id="filterBatchIdContainer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "12px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                background: "#fafafa",
+                maxHeight: "200px",
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "15px",
+                  fontSize: "13px",
+                  color: "#666",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    width: "100px",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      background: "#d4edda",
+                      border: "1px solid #c3e6cb",
+                      borderRadius: "3px",
+                      display: "inline-block",
+                    }}
+                  ></span>
+                  <span>Có material</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    width: "150px",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      background: "#fff3cd",
+                      border: "1px solid #ffeaa7",
+                      borderRadius: "3px",
+                      display: "inline-block",
+                    }}
+                  ></span>
+                  <span>Chưa có material</span>
+                </div>
+              </div>
+              <div
+                id="filterBatchCodeOptions"
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  width: "100%",
+                }}
+              >
+                <label
+                  className={`batch-filter-label ${
+                    selectedBatchCode === "" ? "selected" : ""
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="filterBatchCode"
+                    value=""
+                    checked={selectedBatchCode === ""}
+                    onChange={() => setSelectedBatchCode("")}
+                  />
+                  <span>Tất cả</span>
+                </label>
+                {uniqueBatchNumbers.map((code, index) => {
+                  const isRunning = batchCodesWithMaterials.some(
+                    (b) => b.batchCode === code,
+                  );
+
+                  return (
+                    <label
+                      key={index}
+                      style={{
+                        background: isRunning ? "#d4edda" : "#fff3cd",
+                        borderColor: isRunning ? "#c3e6cb" : "#ffeaa7",
+                      }}
+                      className={`batch-filter-label ${
+                        selectedBatchCode === code ? "selected" : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="filterBatchCode"
+                        value={code}
+                        checked={selectedBatchCode === code}
+                        onChange={() => setSelectedBatchCode(code)}
+                      />
+                      <span
+                        style={{
+                          borderRadius: "3px",
+                          display: "inline-block",
+                        }}
+                      >
+                        {code}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Material Type Filter */}
+        <div
+          style={{
+            display: currentTab === "materials" ? "block" : "none",
+            marginBottom: "20px",
+          }}
+        >
+          <label
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              fontWeight: "500",
+              color: "#333",
+              fontSize: "14px",
+            }}
+          >
+            Loại vật liệu:
+          </label>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "10px",
+              padding: "12px",
+              border: "1px solid #ddd",
+              borderRadius: "4px",
+              background: "#fafafa",
+            }}
+          >
+            <div
+              id="filterMaterialTypeOptions"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                width: "100%",
+              }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Filter Section */}
+        <div
+          style={{
+            display: currentTab === "materials" ? "block" : "none",
+            background: "white",
+            padding: "20px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr auto",
+              gap: "15px",
+              alignItems: "flex-end",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  fontWeight: "bold",
+                  color: "#666",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
+                Ingredient Code
+              </label>
+              <input
+                type="text"
+                id="filterIngredientCode"
+                placeholder="Nhập mã nguyên liệu..."
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  fontWeight: "bold",
+                  color: "#666",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
+                Lot
+              </label>
+              <input
+                type="text"
+                id="filterLot"
+                placeholder="Nhập lot..."
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  fontWeight: "bold",
+                  color: "#666",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
+                Quantity
+              </label>
+              <input
+                id="filterQuantity"
+                placeholder="Nhập số lượng..."
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <button
+              id="resetFilterBtn"
+              style={{
+                background: "#6c757d",
+                color: "white",
+                border: "none",
+                padding: "8px 16px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "bold",
+                transition: "background 0.2s",
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="materialsTableWrapper"
+          style={{
+            display: currentTab === "materials" ? "block" : "none",
+            width: "100%",
+            background: "white",
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+            overflowX: "auto",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              background: "white",
+              boxShadow: "none",
+              minWidth: "1360px",
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  backgroundColor: "#f5f5f5",
+                  borderBottom: "2px solid #ddd",
+                }}
+              >
+                {[
+                  "ID",
+                  "Batch Number",
+                  "Ingredient Code",
+                  "Lot",
+                  "Plan Quantity",
+                  "Actual Quantity",
+                  "Consumption Date",
+                  "Status",
+                  "View",
+                ].map((header) => (
+                  <th
+                    key={header}
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {header}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody id="materialsTableBody">
               <tr>
-                <td colSpan="9" className="loading-row">
+                <td
+                  colSpan="9"
+                  style={{
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#999",
+                  }}
+                >
                   Đang tải dữ liệu...
                 </td>
               </tr>
@@ -125,54 +990,469 @@ export default function ProductionOrderDetailPage() {
         </div>
       </div>
 
-      {/* Material Detail Modal */}
-      <div id="materialModal" className="modal">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2>Chi Tiết Vật Liệu Tiêu Thụ</h2>
-            <button id="closeModalBtn">&times;</button>
-          </div>
+      {/* Materials Pagination Controls */}
+      <div
+        id="materialsPaginationControls"
+        style={{
+          marginTop: "20px",
+          display: currentTab === "materials" ? "flex" : "none",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "15px",
+          padding: "15px 0 20px 0",
+        }}
+      >
+        <button
+          id="materialsPrevBtn"
+          style={{
+            background: "#007aff",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            padding: "8px 12px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background 0.3s ease, opacity 0.3s ease",
+            fontSize: "16px",
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <span
+          id="materialsPageInfo"
+          style={{
+            fontSize: "14px",
+            color: "#666",
+            fontWeight: "500",
+            minWidth: "200px",
+            textAlign: "center",
+          }}
+        >
+          Trang 0 / 1
+        </span>
+        <button
+          id="materialsNextBtn"
+          style={{
+            background: "#007aff",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            padding: "8px 12px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background 0.3s ease, opacity 0.3s ease",
+            fontSize: "16px",
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
 
-          <div className="modal-grid">
-            {[
-              ["ID", "modalId"],
-              ["Production Order Number", "modalProductionOrderNumber"],
-              ["Batch Code", "modalBatchCode"],
-              ["Ingredient Code", "modalIngredientCode"],
-              ["Lot", "modalLot"],
-              ["Plan Quantity", "modalPlanQuantity"],
-              ["Actual Quantity", "modalQuantity"],
-              ["Consumption Date", "modalDateTime"],
-              ["Status", "modalStatusDisplay"],
-              ["Count", "modalCount"],
-              ["Operator ID", "modalOperatorId"],
-              ["Supply Machine", "modalSupplyMachine"],
-              ["Timestamp", "modalTimestamp"],
-            ].map(([label, id]) => (
-              <div key={id}>
-                <label>{label}</label>
-                <p id={id}>-</p>
+      {/* Ingredients Content */}
+      <div id="ingredientsContent" style={{ marginTop: "20px" }}>
+        {/* Ingredients Pagination Controls */}
+        <div
+          id="ingredientsPaginationControls"
+          style={{
+            marginTop: "20px",
+            display: "none",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "15px",
+            padding: "15px 0 20px 0",
+          }}
+        >
+          <button
+            id="ingredientsPrevBtn"
+            style={{
+              background: "#007aff",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.3s ease, opacity 0.3s ease",
+              fontSize: "16px",
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <span
+            id="ingredientsPageInfo"
+            style={{
+              fontSize: "14px",
+              color: "#666",
+              fontWeight: "500",
+              minWidth: "200px",
+              textAlign: "center",
+            }}
+          >
+            Trang 0 / 1
+          </span>
+          <button
+            id="ingredientsNextBtn"
+            style={{
+              background: "#007aff",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.3s ease, opacity 0.3s ease",
+              fontSize: "16px",
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        {/* Material Detail Modal */}
+        <div
+          id="materialModal"
+          style={{
+            display: "none",
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(0, 0, 0, 0.5)",
+            zIndex: 1000,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "8px",
+              padding: "30px",
+              maxWidth: "600px",
+              width: "90%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+                borderBottom: "2px solid #ddd",
+                paddingBottom: "15px",
+              }}
+            >
+              <h2 style={{ margin: 0, color: "#333" }}>
+                Chi Tiết Vật Liệu Tiêu Thụ
+              </h2>
+              <button
+                id="closeModalBtn"
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                  color: "#666",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <div
+              id="modalContent"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "20px",
+              }}
+            >
+              {[
+                { label: "ID", id: "modalId" },
+                {
+                  label: "Production Order Number",
+                  id: "modalProductionOrderNumber",
+                },
+                { label: "Batch Code", id: "modalBatchCode" },
+                { label: "Ingredient Code", id: "modalIngredientCode" },
+                { label: "Lot", id: "modalLot" },
+                { label: "Plan Quantity", id: "modalPlanQuantity" },
+                { label: "Actual Quantity", id: "modalQuantity" },
+                { label: "Consumption Date", id: "modalDateTime" },
+                { label: "Status", id: "modalStatusDisplay" },
+                { label: "Count", id: "modalCount" },
+                { label: "Operator ID", id: "modalOperatorId" },
+                { label: "Supply Machine", id: "modalSupplyMachine" },
+                { label: "Timestamp", id: "modalTimestamp" },
+              ].map((item) => (
+                <div key={item.id}>
+                  <label
+                    style={{
+                      fontWeight: "bold",
+                      color: "#666",
+                      display: "block",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    {item.label}
+                  </label>
+                  <p
+                    id={item.id}
+                    style={{
+                      margin: 0,
+                      padding: "8px",
+                      background: "#f5f5f5",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    -
+                  </p>
+                </div>
+              ))}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label
+                  style={{
+                    fontWeight: "bold",
+                    color: "#666",
+                    display: "block",
+                    marginBottom: "5px",
+                  }}
+                >
+                  Request
+                </label>
+                <pre
+                  id="modalRequest"
+                  style={{
+                    margin: 0,
+                    padding: "8px",
+                    background: "#f5f5f5",
+                    borderRadius: "4px",
+                    overflowX: "auto",
+                    fontSize: "16px",
+                    maxHeight: "500px",
+                  }}
+                >
+                  -
+                </pre>
               </div>
-            ))}
-
-            <div className="full">
-              <label>Request</label>
-              <pre id="modalRequest">-</pre>
-            </div>
-            <div className="full">
-              <label>Response</label>
-              <pre id="modalResponse">-</pre>
-            </div>
-            <div className="full">
-              <label>Status</label>
-              <pre id="modalStatus">-</pre>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label
+                  style={{
+                    fontWeight: "bold",
+                    color: "#666",
+                    display: "block",
+                    marginBottom: "5px",
+                  }}
+                >
+                  Response
+                </label>
+                <pre
+                  id="modalResponse"
+                  style={{
+                    margin: 0,
+                    padding: "8px",
+                    background: "#f5f5f5",
+                    borderRadius: "4px",
+                    overflowX: "auto",
+                    fontSize: "16px",
+                    maxHeight: "150px",
+                  }}
+                >
+                  -
+                </pre>
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label
+                  style={{
+                    fontWeight: "bold",
+                    color: "#666",
+                    display: "block",
+                    marginBottom: "5px",
+                  }}
+                >
+                  Status
+                </label>
+                <pre
+                  id="modalStatus"
+                  style={{
+                    margin: 0,
+                    padding: "8px",
+                    background: "#f5f5f5",
+                    borderRadius: "4px",
+                    overflowX: "auto",
+                    maxHeight: "200px",
+                    fontSize: "16px",
+                  }}
+                >
+                  -
+                </pre>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div id="loadingMessage">
-        <p>Đang tải dữ liệu...</p>
+        {/* Material List Modal (for grouped materials) */}
+        <div
+          id="materialListModal"
+          style={{
+            display: "none",
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(0, 0, 0, 0.5)",
+            zIndex: 9998,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "12px",
+              width: "90%",
+              maxWidth: "1200px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <div
+              style={{
+                padding: "20px 30px",
+                borderBottom: "2px solid #f0f0f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                position: "sticky",
+                top: 0,
+                background: "white",
+                zIndex: 1,
+              }}
+            >
+              <div id="listModalTitle" style={{ flex: 1 }}></div>
+              <button
+                // onclick="closeMaterialListModal()" // React event handling would be nicer but keeping structure
+                id="closeMaterialListModalBtn"
+                style={{
+                  background: "#e74c3c",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  transition: "background 0.3s ease",
+                }}
+                onMouseOver={(e) =>
+                  (e.currentTarget.style.background = "#c0392b")
+                }
+                onMouseOut={(e) =>
+                  (e.currentTarget.style.background = "#e74c3c")
+                }
+              >
+                Đóng
+              </button>
+            </div>
+            <div style={{ padding: "30px" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  background: "white",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background: "#f5f5f5",
+                      borderBottom: "2px solid #ddd",
+                    }}
+                  >
+                    {[
+                      "ID",
+                      "Batch Number",
+                      "Ingredient Code",
+                      "Lot",
+                      "Plan Quantity",
+                      "Actual Quantity",
+                      "Consumption Date",
+                      "Status",
+                      "Actions",
+                    ].map((header) => (
+                      <th
+                        key={header}
+                        style={{
+                          padding: "12px",
+                          textAlign: "center",
+                          fontWeight: "600",
+                          color: "#333",
+                        }}
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody id="materialListTableBody">
+                  {/* Rows will be rendered by JavaScript */}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
