@@ -27,6 +27,18 @@ export default function ProductionOrderDetailPage() {
   const [batchCodesWithMaterials, setBatchCodesWithMaterials] = useState([]);
   const [selectedBatchCode, setSelectedBatchCode] = useState("");
 
+  // New filters state
+  const [ingredientCodeFilter, setIngredientCodeFilter] = useState("");
+  const [lotFilter, setLotFilter] = useState("");
+  const [quantityFilter, setQuantityFilter] = useState("");
+
+  // New modals state
+  const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(null);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
+  const [isMaterialListModalOpen, setIsMaterialListModalOpen] = useState(false);
+  const [isMaterialDetailModalOpen, setIsMaterialDetailModalOpen] =
+    useState(false);
+
   const filterOptions = [
     { value: "all", label: "Tất cả" },
     { value: "consumed", label: "Đã tiêu thụ" },
@@ -63,6 +75,52 @@ export default function ProductionOrderDetailPage() {
       }
     }
     return String(status);
+  }
+
+  function formatDateTime(dateString) {
+    if (!dateString) return "";
+    const [datePart, timePart] = dateString.split("T");
+    if (!datePart || !timePart) return dateString;
+
+    const [year, month, day] = datePart.split("-");
+    const [hours, minutes, seconds] = timePart.replace("Z", "").split(":");
+
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  }
+
+  function groupMaterials(materialsArray) {
+    const groupMap = new Map();
+
+    materialsArray.forEach((material) => {
+      const key = `${material.ingredientCode || ""}`;
+      if (groupMap.has(key)) {
+        const group = groupMap.get(key);
+        // Check if the material is already in the group
+        const isDuplicate = group.items.some(
+          (item) =>
+            item.id === material.id && item.batchCode === material.batchCode,
+        );
+        if (!isDuplicate) {
+          group.totalQuantity += parseFloat(material.quantity) || 0;
+          group.items.push(material);
+          group.ids.push(material.id);
+        }
+      } else {
+        // Create new group
+        groupMap.set(key, {
+          ingredientCode: material.ingredientCode,
+          lot: material.lot,
+          unitOfMeasurement: material.unitOfMeasurement,
+          totalQuantity: parseFloat(material.quantity) || 0,
+          items: [material],
+          ids: [material.id],
+          latestDatetime: material.datetime,
+          respone: material.respone,
+        });
+      }
+    });
+
+    return Array.from(groupMap.values());
   }
 
   function mergeBatchesRemoveDuplicate(arr1, arr2) {
@@ -294,6 +352,91 @@ export default function ProductionOrderDetailPage() {
     ingredientsTotalsByUOM,
     batchCodesWithMaterials,
   ]);
+
+  const filteredAndGroupedMaterials = useMemo(() => {
+    let filtered = [...allMaterials];
+
+    if (materialFilterType === "unconsumed") {
+      filtered = filtered.filter((item) => item.id === null);
+    }
+    if (ingredientCodeFilter) {
+      const lower = ingredientCodeFilter.toLowerCase();
+      filtered = filtered.filter((item) =>
+        item.ingredientCode?.toLowerCase().includes(lower),
+      );
+    }
+    if (lotFilter) {
+      const lower = lotFilter.toLowerCase();
+      filtered = filtered.filter((item) =>
+        item.lot?.toLowerCase().includes(lower),
+      );
+    }
+    if (quantityFilter) {
+      const str = quantityFilter.toString();
+      filtered = filtered.filter((item) =>
+        item.quantity?.toString().includes(str),
+      );
+    }
+    if (selectedBatchCode) {
+      if (selectedBatchCode === "null") {
+        filtered = filtered.filter((item) => !item.batchCode);
+      } else {
+        filtered = filtered.filter(
+          (item) => item.batchCode === selectedBatchCode,
+        );
+      }
+    }
+
+    let grouped = groupMaterials(filtered);
+
+    if (materialFilterType === "consumed") {
+      grouped = grouped
+        .filter((group) => {
+          if (group.ids.length === 0) return false;
+          return group.ids.some((id) => id !== null);
+        })
+        .map((group) => ({
+          ...group,
+          ids: group.ids.filter((id) => id !== null),
+          items: group.items.filter((item) => item.id !== null),
+        }));
+    } else if (materialFilterType === "unconsumed") {
+      grouped = grouped
+        .filter((group) => {
+          if (group.ids.length === 0) return true;
+          return group.ids[0] === null;
+        })
+        .map((group) => ({
+          ...group,
+          ids: group.ids.filter((id) => id === null),
+          totalQuantity: 0,
+          items: group.items.filter((item) => item.id === null),
+        }));
+    }
+    return grouped;
+  }, [
+    allMaterials,
+    ingredientCodeFilter,
+    lotFilter,
+    quantityFilter,
+    selectedBatchCode,
+    materialFilterType,
+  ]);
+
+  const paginatedGroupedMaterials = useMemo(() => {
+    const startIndex = (materialsCurrentPage - 1) * materialsPerPage;
+    const endIndex = startIndex + materialsPerPage;
+    return filteredAndGroupedMaterials.slice(startIndex, endIndex);
+  }, [filteredAndGroupedMaterials, materialsCurrentPage]);
+
+  // Update total counts/pages
+  useEffect(() => {
+    setMaterialsTotalCount(filteredAndGroupedMaterials.length);
+    const total = Math.ceil(
+      filteredAndGroupedMaterials.length / materialsPerPage,
+    );
+    setMaterialsTotalPages(total || 1);
+  }, [filteredAndGroupedMaterials.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -990,6 +1133,11 @@ export default function ProductionOrderDetailPage() {
               <input
                 type="text"
                 id="filterIngredientCode"
+                value={ingredientCodeFilter}
+                onChange={(e) => {
+                  setIngredientCodeFilter(e.target.value);
+                  setMaterialsCurrentPage(1);
+                }}
                 placeholder="Nhập mã nguyên liệu..."
                 style={{
                   width: "100%",
@@ -1014,6 +1162,11 @@ export default function ProductionOrderDetailPage() {
               <input
                 type="text"
                 id="filterLot"
+                value={lotFilter}
+                onChange={(e) => {
+                  setLotFilter(e.target.value);
+                  setMaterialsCurrentPage(1);
+                }}
                 placeholder="Nhập lot..."
                 style={{
                   width: "100%",
@@ -1037,6 +1190,11 @@ export default function ProductionOrderDetailPage() {
               </label>
               <input
                 id="filterQuantity"
+                value={quantityFilter}
+                onChange={(e) => {
+                  setQuantityFilter(e.target.value);
+                  setMaterialsCurrentPage(1);
+                }}
                 placeholder="Nhập số lượng..."
                 style={{
                   width: "100%",
@@ -1049,6 +1207,14 @@ export default function ProductionOrderDetailPage() {
             </div>
             <button
               id="resetFilterBtn"
+              onClick={() => {
+                setIngredientCodeFilter("");
+                setLotFilter("");
+                setQuantityFilter("");
+                setSelectedBatchCode("");
+                setMaterialFilterType("all");
+                setMaterialsCurrentPage(1);
+              }}
               style={{
                 background: "#6c757d",
                 color: "white",
@@ -1117,18 +1283,157 @@ export default function ProductionOrderDetailPage() {
               </tr>
             </thead>
             <tbody id="materialsTableBody">
-              <tr>
-                <td
-                  colSpan="9"
-                  style={{
-                    padding: "20px",
-                    textAlign: "center",
-                    color: "#999",
-                  }}
-                >
-                  Đang tải dữ liệu...
-                </td>
-              </tr>
+              {paginatedGroupedMaterials.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="9"
+                    style={{
+                      padding: "20px",
+                      textAlign: "center",
+                      color: "#999",
+                    }}
+                  >
+                    Không có dữ liệu
+                  </td>
+                </tr>
+              )}
+              {paginatedGroupedMaterials.map((group, index) => {
+                const idsDisplay =
+                  group.items.length >= 2
+                    ? `${group.items.length} items`
+                    : group.items.map((item) => item.id).join(", ");
+
+                const uniqueBatchCodes = [
+                  ...new Set(
+                    group.items
+                      .map((item) => item.batchCode)
+                      .filter((code) => code),
+                  ),
+                ];
+                let batchCodeDisplay;
+                if (uniqueBatchCodes.length === 0) {
+                  batchCodeDisplay = "-";
+                } else if (uniqueBatchCodes.length <= 3) {
+                  batchCodeDisplay = uniqueBatchCodes.join(", ");
+                } else {
+                  batchCodeDisplay =
+                    uniqueBatchCodes.slice(0, 3).join(", ") + ", ...";
+                }
+
+                // Plan Quantity Calc
+                const ingredientCode = group.ingredientCode;
+                const ingredientCodeOnly = ingredientCode
+                  ? ingredientCode.split(" - ")[0].trim()
+                  : "";
+                let totalPlanQuantity = 0;
+                let hasValidPlan = false;
+                group.items.forEach((item) => {
+                  const batch = batches.find(
+                    (b) => b.BatchNumber === item.batchCode,
+                  );
+                  const batchQuantity = batch
+                    ? parseFloat(batch.Quantity) || 0
+                    : 0;
+                  const recipeQuantity =
+                    ingredientsTotalsByUOM[ingredientCodeOnly]?.total || 0;
+                  const poQuantity = parseFloat(order?.Quantity) || 1;
+
+                  let planQ = recipeQuantity;
+                  if (batchQuantity !== 0) {
+                    planQ = (recipeQuantity / poQuantity) * batchQuantity;
+                  }
+                  if (recipeQuantity === 0 || batchQuantity === 0) {
+                    return;
+                  }
+                  hasValidPlan = true;
+                  totalPlanQuantity += planQ;
+                });
+
+                let planQuantityDisplay = "N/A";
+                if (hasValidPlan) {
+                  planQuantityDisplay = totalPlanQuantity.toFixed(2);
+                }
+
+                // Status Display
+                let statusDisplay = "-";
+                if (group.items.length === 1) {
+                  statusDisplay = group.items[0].respone
+                    ? group.items[0].respone === "Success"
+                      ? "Success"
+                      : "Failed"
+                    : "-";
+                }
+
+                return (
+                  <tr key={index} style={{ borderBottom: "1px solid #eee" }}>
+                    <td
+                      style={{
+                        padding: "12px",
+                        textAlign: "center",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {idsDisplay}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {batchCodeDisplay}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {group.ingredientCode || "-"}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {group.lot || "-"}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {planQuantityDisplay} {group.unitOfMeasurement || ""}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {group.totalQuantity === 0
+                        ? `N/A ${group.unitOfMeasurement || ""}`
+                        : `${group.totalQuantity.toFixed(2)} ${group.unitOfMeasurement || ""}`}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {formatDateTime(group.latestDatetime) || "-"}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      {statusDisplay}
+                    </td>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
+                      <button
+                        className="viewMaterialGroupBtn"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#007bff",
+                          padding: "6px",
+                          transition: "color 0.2s",
+                        }}
+                        title="View"
+                        onClick={() => {
+                          if (group.items.length === 1) {
+                            setSelectedMaterial(group.items[0]);
+                            setIsMaterialDetailModalOpen(true);
+                          } else {
+                            setSelectedMaterialGroup(group);
+                            setIsMaterialListModalOpen(true);
+                          }
+                        }}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="30"
+                          height="30"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1139,7 +1444,10 @@ export default function ProductionOrderDetailPage() {
         id="materialsPaginationControls"
         style={{
           marginTop: "20px",
-          display: currentTab === "materials" ? "flex" : "none",
+          display:
+            currentTab === "materials" && materialsTotalPages > 1
+              ? "flex"
+              : "none",
           justifyContent: "center",
           alignItems: "center",
           gap: "15px",
@@ -1148,18 +1456,23 @@ export default function ProductionOrderDetailPage() {
       >
         <button
           id="materialsPrevBtn"
+          onClick={() => {
+            if (materialsCurrentPage > 1) setMaterialsCurrentPage((p) => p - 1);
+          }}
+          disabled={materialsCurrentPage <= 1}
           style={{
-            background: "#007aff",
+            background: materialsCurrentPage <= 1 ? "#ccc" : "#007aff",
             color: "white",
             border: "none",
             borderRadius: "6px",
             padding: "8px 12px",
-            cursor: "pointer",
+            cursor: materialsCurrentPage <= 1 ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             transition: "background 0.3s ease, opacity 0.3s ease",
             fontSize: "16px",
+            opacity: materialsCurrentPage <= 1 ? 0.6 : 1,
           }}
         >
           <svg
@@ -1184,22 +1497,33 @@ export default function ProductionOrderDetailPage() {
             textAlign: "center",
           }}
         >
-          Trang 0 / 1
+          Trang {materialsCurrentPage} / {materialsTotalPages} (Tổng:{" "}
+          {materialsTotalCount})
         </span>
         <button
           id="materialsNextBtn"
+          onClick={() => {
+            if (materialsCurrentPage < materialsTotalPages)
+              setMaterialsCurrentPage((p) => p + 1);
+          }}
+          disabled={materialsCurrentPage >= materialsTotalPages}
           style={{
-            background: "#007aff",
+            background:
+              materialsCurrentPage >= materialsTotalPages ? "#ccc" : "#007aff",
             color: "white",
             border: "none",
             borderRadius: "6px",
             padding: "8px 12px",
-            cursor: "pointer",
+            cursor:
+              materialsCurrentPage >= materialsTotalPages
+                ? "not-allowed"
+                : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             transition: "background 0.3s ease, opacity 0.3s ease",
             fontSize: "16px",
+            opacity: materialsCurrentPage >= materialsTotalPages ? 0.6 : 1,
           }}
         >
           <svg
@@ -1216,95 +1540,18 @@ export default function ProductionOrderDetailPage() {
         </button>
       </div>
 
-      {/* Ingredients Content */}
-      <div id="ingredientsContent" style={{ marginTop: "20px" }}>
-        {/* Ingredients Pagination Controls */}
-        <div
-          id="ingredientsPaginationControls"
-          style={{
-            marginTop: "20px",
-            display: "none",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "15px",
-            padding: "15px 0 20px 0",
-          }}
-        >
-          <button
-            id="ingredientsPrevBtn"
-            style={{
-              background: "#007aff",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              padding: "8px 12px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.3s ease, opacity 0.3s ease",
-              fontSize: "16px",
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
-          <span
-            id="ingredientsPageInfo"
-            style={{
-              fontSize: "14px",
-              color: "#666",
-              fontWeight: "500",
-              minWidth: "200px",
-              textAlign: "center",
-            }}
-          >
-            Trang 0 / 1
-          </span>
-          <button
-            id="ingredientsNextBtn"
-            style={{
-              background: "#007aff",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              padding: "8px 12px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.3s ease, opacity 0.3s ease",
-              fontSize: "16px",
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-          </button>
-        </div>
+      {/* Ingredients Content - Hidden for now as requested */}
+      <div
+        id="ingredientsContent"
+        style={{ marginTop: "20px", display: "none" }}
+      ></div>
 
-        {/* Material Detail Modal */}
+      {/* Material Detail Modal */}
+      {isMaterialDetailModalOpen && selectedMaterial && (
         <div
           id="materialModal"
           style={{
-            display: "none",
+            display: "flex",
             position: "fixed",
             top: 0,
             left: 0,
@@ -1314,6 +1561,10 @@ export default function ProductionOrderDetailPage() {
             zIndex: 1000,
             alignItems: "center",
             justifyContent: "center",
+          }}
+          onClick={(e) => {
+            if (e.target.id === "materialModal")
+              setIsMaterialDetailModalOpen(false);
           }}
         >
           <div
@@ -1343,6 +1594,7 @@ export default function ProductionOrderDetailPage() {
               </h2>
               <button
                 id="closeModalBtn"
+                onClick={() => setIsMaterialDetailModalOpen(false)}
                 style={{
                   background: "none",
                   border: "none",
@@ -1363,24 +1615,77 @@ export default function ProductionOrderDetailPage() {
               }}
             >
               {[
-                { label: "ID", id: "modalId" },
+                { label: "ID", value: selectedMaterial.id || "-" },
                 {
                   label: "Production Order Number",
-                  id: "modalProductionOrderNumber",
+                  value: order?.ProductionOrderNumber || "-",
                 },
-                { label: "Batch Code", id: "modalBatchCode" },
-                { label: "Ingredient Code", id: "modalIngredientCode" },
-                { label: "Lot", id: "modalLot" },
-                { label: "Plan Quantity", id: "modalPlanQuantity" },
-                { label: "Actual Quantity", id: "modalQuantity" },
-                { label: "Consumption Date", id: "modalDateTime" },
-                { label: "Status", id: "modalStatusDisplay" },
-                { label: "Count", id: "modalCount" },
-                { label: "Operator ID", id: "modalOperatorId" },
-                { label: "Supply Machine", id: "modalSupplyMachine" },
-                { label: "Timestamp", id: "modalTimestamp" },
-              ].map((item) => (
-                <div key={item.id}>
+                {
+                  label: "Batch Code",
+                  value: selectedMaterial.batchCode || "-",
+                },
+                {
+                  label: "Ingredient Code",
+                  value: selectedMaterial.ingredientCode || "-",
+                },
+                { label: "Lot", value: selectedMaterial.lot || "-" },
+                {
+                  label: "Plan Quantity",
+                  value: (() => {
+                    const batch = batches.find(
+                      (b) => b.BatchNumber === selectedMaterial.batchCode,
+                    );
+                    const batchQuantity = batch
+                      ? parseFloat(batch.Quantity) || 0
+                      : 0;
+                    const code = selectedMaterial.ingredientCode
+                      ?.split(" - ")[0]
+                      .trim();
+                    const recipeQuantity =
+                      ingredientsTotalsByUOM[code]?.total || 0;
+                    const poQuantity = parseFloat(order?.Quantity) || 1;
+
+                    if (recipeQuantity === 0 || batchQuantity === 0)
+                      return "N/A";
+
+                    const planQ = (recipeQuantity / poQuantity) * batchQuantity;
+                    return `${planQ.toFixed(2)} ${selectedMaterial.unitOfMeasurement || ""}`;
+                  })(),
+                },
+                {
+                  label: "Actual Quantity",
+                  value:
+                    !selectedMaterial.quantity ||
+                    selectedMaterial.quantity === 0
+                      ? `N/A ${selectedMaterial.unitOfMeasurement || ""}`
+                      : `${selectedMaterial.quantity} ${selectedMaterial.unitOfMeasurement || ""}`,
+                },
+                {
+                  label: "Consumption Date",
+                  value: formatDate(selectedMaterial.datetime) || "-",
+                },
+                {
+                  label: "Status",
+                  value:
+                    selectedMaterial.respone === "Success"
+                      ? "Success"
+                      : "Failed",
+                },
+                { label: "Count", value: selectedMaterial.count || "-" },
+                {
+                  label: "Operator ID",
+                  value: selectedMaterial.operator_ID || "-",
+                },
+                {
+                  label: "Supply Machine",
+                  value: selectedMaterial.supplyMachine || "-",
+                },
+                {
+                  label: "Timestamp",
+                  value: formatDate(selectedMaterial.timestamp) || "-",
+                },
+              ].map((item, idx) => (
+                <div key={idx}>
                   <label
                     style={{
                       fontWeight: "bold",
@@ -1392,7 +1697,6 @@ export default function ProductionOrderDetailPage() {
                     {item.label}
                   </label>
                   <p
-                    id={item.id}
                     style={{
                       margin: 0,
                       padding: "8px",
@@ -1400,7 +1704,7 @@ export default function ProductionOrderDetailPage() {
                       borderRadius: "4px",
                     }}
                   >
-                    -
+                    {item.value}
                   </p>
                 </div>
               ))}
@@ -1416,7 +1720,6 @@ export default function ProductionOrderDetailPage() {
                   Request
                 </label>
                 <pre
-                  id="modalRequest"
                   style={{
                     margin: 0,
                     padding: "8px",
@@ -1427,7 +1730,7 @@ export default function ProductionOrderDetailPage() {
                     maxHeight: "500px",
                   }}
                 >
-                  -
+                  {selectedMaterial.request || "-"}
                 </pre>
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
@@ -1442,7 +1745,6 @@ export default function ProductionOrderDetailPage() {
                   Response
                 </label>
                 <pre
-                  id="modalResponse"
                   style={{
                     margin: 0,
                     padding: "8px",
@@ -1453,7 +1755,7 @@ export default function ProductionOrderDetailPage() {
                     maxHeight: "150px",
                   }}
                 >
-                  -
+                  {selectedMaterial.respone || "-"}
                 </pre>
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
@@ -1468,7 +1770,6 @@ export default function ProductionOrderDetailPage() {
                   Status
                 </label>
                 <pre
-                  id="modalStatus"
                   style={{
                     margin: 0,
                     padding: "8px",
@@ -1479,18 +1780,20 @@ export default function ProductionOrderDetailPage() {
                     fontSize: "16px",
                   }}
                 >
-                  -
+                  {selectedMaterial.status1 || "-"}
                 </pre>
               </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Material List Modal (for grouped materials) */}
+      {/* Material List Modal (for grouped materials) */}
+      {isMaterialListModalOpen && selectedMaterialGroup && (
         <div
           id="materialListModal"
           style={{
-            display: "none",
+            display: "flex",
             position: "fixed",
             top: 0,
             left: 0,
@@ -1500,6 +1803,10 @@ export default function ProductionOrderDetailPage() {
             zIndex: 9998,
             justifyContent: "center",
             alignItems: "center",
+          }}
+          onClick={(e) => {
+            if (e.target.id === "materialListModal")
+              setIsMaterialListModalOpen(false);
           }}
         >
           <div
@@ -1526,10 +1833,34 @@ export default function ProductionOrderDetailPage() {
                 zIndex: 1,
               }}
             >
-              <div id="listModalTitle" style={{ flex: 1 }}></div>
+              <div id="listModalTitle" style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    marginBottom: "10px",
+                  }}
+                >
+                  Danh sách Materials
+                </div>
+                <div style={{ fontSize: "14px", color: "#666" }}>
+                  <span style={{ marginRight: "20px" }}>
+                    <strong>Ingredient:</strong>{" "}
+                    {selectedMaterialGroup.ingredientCode || "-"}
+                  </span>
+                  <span style={{ marginRight: "20px" }}>
+                    <strong>Lot:</strong> {selectedMaterialGroup.lot || "-"}
+                  </span>
+                  <span>
+                    <strong>Total Quantity:</strong>{" "}
+                    {selectedMaterialGroup.totalQuantity.toFixed(2)}{" "}
+                    {selectedMaterialGroup.unitOfMeasurement || ""}
+                  </span>
+                </div>
+              </div>
               <button
-                // onclick="closeMaterialListModal()" // React event handling would be nicer but keeping structure
                 id="closeMaterialListModalBtn"
+                onClick={() => setIsMaterialListModalOpen(false)}
                 style={{
                   background: "#e74c3c",
                   color: "white",
@@ -1540,12 +1871,6 @@ export default function ProductionOrderDetailPage() {
                   fontWeight: "bold",
                   transition: "background 0.3s ease",
                 }}
-                onMouseOver={(e) =>
-                  (e.currentTarget.style.background = "#c0392b")
-                }
-                onMouseOut={(e) =>
-                  (e.currentTarget.style.background = "#e74c3c")
-                }
               >
                 Đóng
               </button>
@@ -1591,16 +1916,101 @@ export default function ProductionOrderDetailPage() {
                   </tr>
                 </thead>
                 <tbody id="materialListTableBody">
-                  {/* Rows will be rendered by JavaScript */}
-                  {allMaterials.map((material, index) => (
-                    <tr key={index}></tr>
-                  ))}
+                  {selectedMaterialGroup.items.map((material, idx) => {
+                    const batch = batches.find(
+                      (b) => b.BatchNumber === material.batchCode,
+                    );
+                    const batchQuantity = batch
+                      ? parseFloat(batch.Quantity) || 0
+                      : 0;
+                    const code = material.ingredientCode
+                      ?.split(" - ")[0]
+                      .trim();
+                    const recipeQuantity =
+                      ingredientsTotalsByUOM[code]?.total || 0;
+                    const poQuantity = parseFloat(order?.Quantity) || 1;
+
+                    let planQVal = "N/A";
+                    if (recipeQuantity > 0 && batchQuantity > 0) {
+                      planQVal = (
+                        (recipeQuantity / poQuantity) *
+                        batchQuantity
+                      ).toFixed(2);
+                    }
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
+                        <td
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {material.id || "-"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {material.batchCode || "-"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {material.ingredientCode || "-"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {material.lot || "-"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {planQVal} {material.unitOfMeasurement || ""}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {!material.quantity || material.quantity === 0
+                            ? `N/A ${material.unitOfMeasurement || ""}`
+                            : `${material.quantity} ${material.unitOfMeasurement || ""}`}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {formatDateTime(material.datetime) || "-"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          {material.respone === "Success"
+                            ? "Success"
+                            : "Failed"}
+                        </td>
+                        <td style={{ padding: "12px", textAlign: "center" }}>
+                          <button
+                            className="viewMaterialDetailBtn"
+                            onClick={() => {
+                              setIsMaterialListModalOpen(false);
+                              setSelectedMaterial(material);
+                              setIsMaterialDetailModalOpen(true);
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#007bff",
+                              padding: "6px",
+                            }}
+                            title="Xem chi tiết"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="30"
+                              height="30"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                            >
+                              <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
