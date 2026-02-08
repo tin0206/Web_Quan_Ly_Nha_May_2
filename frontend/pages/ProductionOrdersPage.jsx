@@ -590,8 +590,6 @@ export default function ProductionOrdersPage() {
     }
   }, [productionOrders, processAreaOptions.length, shiftOptions.length]);
 
-  useEffect(() => {}, [shifts, processAreas, statuses]);
-
   return (
     <>
       {/* Top Navigation Bar */}
