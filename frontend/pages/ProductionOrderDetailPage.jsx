@@ -25,7 +25,13 @@ export default function ProductionOrderDetailPage() {
     [],
   );
   const [batchCodesWithMaterials, setBatchCodesWithMaterials] = useState([]);
-  const [selectedBatchCode, setSelectedBatchCode] = useState(null);
+  const [selectedBatchCode, setSelectedBatchCode] = useState("");
+
+  const filterOptions = [
+    { value: "all", label: "Tất cả" },
+    { value: "consumed", label: "Đã tiêu thụ" },
+    { value: "unconsumed", label: "Chưa tiêu thụ" },
+  ];
 
   useEffect(() => {
     document.title = `Chi tiết Production Order #${orderId}`;
@@ -114,6 +120,8 @@ export default function ProductionOrderDetailPage() {
   }, [orderId]);
 
   const fetchBatches = useCallback(async () => {
+    if (!orderId) return;
+
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/production-order-detail/batches?productionOrderId=${orderId}`,
@@ -151,13 +159,21 @@ export default function ProductionOrderDetailPage() {
 
       if (res2.ok) {
         const data2 = await res2.json();
-        const batchCodeWithMaterials = data2.data;
-        setBatchCodesWithMaterials(batchCodeWithMaterials);
+        const batchCodesWithMaterials = data2.data.map((batch) => {
+          return {
+            BatchId: "",
+            ProductionOrderId: orderId,
+            BatchNumber: batch.batchCode || "null",
+            Quantity: "",
+            UnitOfMeasurement: "",
+          };
+        });
+        setBatchCodesWithMaterials(batchCodesWithMaterials);
 
         // Use currentBatches instead of state batches to avoid infinite loop
         const mergedBatches = mergeBatchesRemoveDuplicate(
           currentBatches,
-          batchCodeWithMaterials,
+          batchCodesWithMaterials,
         );
         setBatches(mergedBatches);
       } else {
@@ -211,20 +227,73 @@ export default function ProductionOrderDetailPage() {
       const [res1, res2] = await Promise.all([
         fetch(
           `${API_BASE_URL}/api/production-order-detail/material-consumptions?${query}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
         ),
         fetch(
           `${API_BASE_URL}/api/production-order-detail/material-consumptions-exclude-batches?${query}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              batchCodesWithMaterials,
+            }),
+          },
         ),
       ]);
 
       const planned = res1.ok ? (await res1.json()).data : [];
       const unplanned = res2.ok ? (await res2.json()).data : [];
 
-      setMaterialsPlannedBatches(planned);
+      let plannedMaterials = [];
+      planned.forEach((item) => {
+        if (
+          plannedMaterials.some(
+            (m) =>
+              m.id === item.id &&
+              m.batchCode === item.batchCode &&
+              m.ingredientCode === item.ingredientCode,
+          )
+        )
+          return;
+        plannedMaterials.push(item);
+      });
+
+      setMaterialsPlannedBatches(plannedMaterials);
       setMaterialsUnplannedBatches(unplanned);
-      setAllMaterials([...planned, ...unplanned]);
+      let finalMaterials = [];
+      plannedMaterials.forEach((material) => {
+        if (
+          finalMaterials.some(
+            (m) =>
+              m.id === material.id &&
+              m.batchCode === material.batchCode &&
+              m.ingredientCode === material.ingredientCode,
+          )
+        )
+          return;
+        finalMaterials.push(material);
+      });
+
+      unplanned.forEach((material) => {
+        if (finalMaterials.some((m) => m.id === material.id)) return;
+        finalMaterials.push(material);
+      });
+
+      setAllMaterials(finalMaterials);
     }
-  }, [order, allMaterials.length, ingredientsTotalsByUOM]);
+  }, [
+    order,
+    allMaterials.length,
+    ingredientsTotalsByUOM,
+    batchCodesWithMaterials,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,7 +301,6 @@ export default function ProductionOrderDetailPage() {
     const run = async () => {
       if (cancelled) return;
       await fetchOrderDetails();
-      await fetchBatches();
     };
 
     run();
@@ -240,7 +308,18 @@ export default function ProductionOrderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchBatches, fetchOrderDetails]);
+  }, [fetchOrderDetails]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) return;
+      await fetchBatches();
+    };
+
+    run();
+  }, [fetchBatches]);
 
   useEffect(() => {
     if (currentTab !== "materials") return;
@@ -480,7 +559,7 @@ export default function ProductionOrderDetailPage() {
                   let status = "";
                   let bgColor = "";
                   const isRunning = batchCodesWithMaterials.some(
-                    (b) => b.batchCode === batch.BatchNumber,
+                    (b) => b.BatchNumber === batch.BatchNumber,
                   );
                   if (isRunning) {
                     status = "Đang chạy";
@@ -524,6 +603,10 @@ export default function ProductionOrderDetailPage() {
                             fontSize: "14px",
                             fontWeight: "500",
                             transition: "background 0.2s",
+                          }}
+                          onClick={() => {
+                            setSelectedBatchCode(batch.BatchNumber);
+                            setCurrentTab("materials");
                           }}
                           title="View Materials"
                         >
@@ -735,7 +818,7 @@ export default function ProductionOrderDetailPage() {
                 </label>
                 {uniqueBatchNumbers.map((code, index) => {
                   const isRunning = batchCodesWithMaterials.some(
-                    (b) => b.batchCode === code,
+                    (b) => b.BatchNumber === code,
                   );
 
                   return (
@@ -809,7 +892,68 @@ export default function ProductionOrderDetailPage() {
                 gap: "10px",
                 width: "100%",
               }}
-            ></div>
+            >
+              {filterOptions.map((option) => (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    background:
+                      materialFilterType === option.value ? "#007bff" : "white",
+                    color:
+                      materialFilterType === option.value ? "white" : "inherit",
+                    border: `1px solid ${materialFilterType === option.value ? "#0056b3" : "#ddd"}`,
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                    fontWeight:
+                      materialFilterType === option.value ? "500" : "normal",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseOver={(e) => {
+                    const radio =
+                      e.currentTarget.querySelector("input[type=radio]");
+                    if (radio.checked) {
+                      e.currentTarget.style.background = "#0056b3";
+                    } else {
+                      e.currentTarget.style.borderColor = "#007bff";
+                      e.currentTarget.style.boxShadow =
+                        "0 2px 4px rgba(0,123,255,0.2)";
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    const radio =
+                      e.currentTarget.querySelector("input[type=radio]");
+                    if (!radio.checked) {
+                      e.currentTarget.style.background = "white";
+                      e.currentTarget.style.color = "inherit";
+                      e.currentTarget.style.borderColor = "#ddd";
+                      e.currentTarget.style.fontWeight = "normal";
+                    } else {
+                      e.currentTarget.style.background = "#007bff";
+                      e.currentTarget.style.borderColor = "#0056b3";
+                    }
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="filterMaterialType"
+                    value={option.value}
+                    checked={materialFilterType === option.value}
+                    style={{
+                      marginRight: "8px",
+                      cursor: "pointer",
+                      width: "16px",
+                    }}
+                    onChange={() => setMaterialFilterType(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1448,6 +1592,9 @@ export default function ProductionOrderDetailPage() {
                 </thead>
                 <tbody id="materialListTableBody">
                   {/* Rows will be rendered by JavaScript */}
+                  {allMaterials.map((material, index) => (
+                    <tr key={index}></tr>
+                  ))}
                 </tbody>
               </table>
             </div>
