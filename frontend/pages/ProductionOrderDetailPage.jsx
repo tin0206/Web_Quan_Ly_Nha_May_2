@@ -31,8 +31,12 @@ export default function ProductionOrderDetailPage() {
   );
   const batchesPerPage = 10;
   const materialsPerPage = 10;
-  const [currentPage, setCurrentPage] = useState(1);
-  const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() =>
+    parseInt(getSessionState("currentPage", "1"), 10),
+  );
+  const [materialsCurrentPage, setMaterialsCurrentPage] = useState(() =>
+    parseInt(getSessionState("materialsCurrentPage", "1"), 10),
+  );
   const [allMaterials, setAllMaterials] = useState([]);
   const [batchCodesWithMaterials, setBatchCodesWithMaterials] = useState([]);
   const [selectedBatchCode, setSelectedBatchCode] = useState(() =>
@@ -104,6 +108,17 @@ export default function ProductionOrderDetailPage() {
       sessionStorage.setItem(`po_${orderId}_quantityFilter`, quantityFilter);
     }
   }, [orderId, quantityFilter]);
+
+  useEffect(() => {
+    sessionStorage.setItem(`po_${orderId}_currentPage`, currentPage);
+  }, [orderId, currentPage]);
+
+  useEffect(() => {
+    sessionStorage.setItem(
+      `po_${orderId}_materialsCurrentPage`,
+      materialsCurrentPage,
+    );
+  }, [orderId, materialsCurrentPage]);
 
   useEffect(() => {
     document.title = `Chi tiết Production Order #${orderId}`;

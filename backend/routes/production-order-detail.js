@@ -322,7 +322,6 @@ router.post("/material-consumptions-exclude-batches", async (req, res) => {
 
     const pool = getPool();
     const request = pool.request();
-    const where = [];
     request.timeout = 120000;
 
     request.input("prodOrderNum", sql.NVarChar, productionOrderNumber.trim());
