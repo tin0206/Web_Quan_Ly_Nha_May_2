@@ -8,29 +8,47 @@ const API_BASE_URL =
 
 export default function ProductionOrderDetailPage() {
   const { orderId } = useParams();
-  const [currentTab, setCurrentTab] = useState("batches");
+
+  // Helper to get from session storage or default
+  const getSessionState = (key, defaultValue) => {
+    try {
+      const stored = sessionStorage.getItem(`po_${orderId}_${key}`);
+      return stored !== null ? stored : defaultValue;
+    } catch (error) {
+      console.error("Error accessing sessionStorage:", error);
+      return defaultValue;
+    }
+  };
+
+  const [currentTab, setCurrentTab] = useState(() =>
+    getSessionState("currentTab", "batches"),
+  );
   const [order, setOrder] = useState(null);
   const [batches, setBatches] = useState([]);
   const [ingredientsTotalsByUOM, setIngredientsTotalsByUOM] = useState({});
-  const [materialFilterType, setMaterialFilterType] = useState("all");
+  const [materialFilterType, setMaterialFilterType] = useState(() =>
+    getSessionState("materialFilterType", "all"),
+  );
   const batchesPerPage = 10;
   const materialsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
-  const [materialsTotalPages, setMaterialsTotalPages] = useState(1);
-  const [materialsTotalCount, setMaterialsTotalCount] = useState(0);
   const [allMaterials, setAllMaterials] = useState([]);
-  const [materialsPlannedBatches, setMaterialsPlannedBatches] = useState([]);
-  const [materialsUnplannedBatches, setMaterialsUnplannedBatches] = useState(
-    [],
-  );
   const [batchCodesWithMaterials, setBatchCodesWithMaterials] = useState([]);
-  const [selectedBatchCode, setSelectedBatchCode] = useState("");
+  const [selectedBatchCode, setSelectedBatchCode] = useState(() =>
+    getSessionState("selectedBatchCode", ""),
+  );
 
   // New filters state
-  const [ingredientCodeFilter, setIngredientCodeFilter] = useState("");
-  const [lotFilter, setLotFilter] = useState("");
-  const [quantityFilter, setQuantityFilter] = useState("");
+  const [ingredientCodeFilter, setIngredientCodeFilter] = useState(() =>
+    getSessionState("ingredientCodeFilter", ""),
+  );
+  const [lotFilter, setLotFilter] = useState(() =>
+    getSessionState("lotFilter", ""),
+  );
+  const [quantityFilter, setQuantityFilter] = useState(() =>
+    getSessionState("quantityFilter", ""),
+  );
 
   // New modals state
   const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(null);
@@ -44,6 +62,48 @@ export default function ProductionOrderDetailPage() {
     { value: "consumed", label: "Đã tiêu thụ" },
     { value: "unconsumed", label: "Chưa tiêu thụ" },
   ];
+
+  // Save state to session storage
+  useEffect(() => {
+    sessionStorage.setItem(`po_${orderId}_currentTab`, currentTab);
+  }, [orderId, currentTab]);
+
+  useEffect(() => {
+    sessionStorage.setItem(
+      `po_${orderId}_materialFilterType`,
+      materialFilterType,
+    );
+  }, [orderId, materialFilterType]);
+
+  useEffect(() => {
+    if (selectedBatchCode !== null && selectedBatchCode !== undefined) {
+      sessionStorage.setItem(
+        `po_${orderId}_selectedBatchCode`,
+        selectedBatchCode,
+      );
+    }
+  }, [orderId, selectedBatchCode]);
+
+  useEffect(() => {
+    if (ingredientCodeFilter !== null && ingredientCodeFilter !== undefined) {
+      sessionStorage.setItem(
+        `po_${orderId}_ingredientCodeFilter`,
+        ingredientCodeFilter,
+      );
+    }
+  }, [orderId, ingredientCodeFilter]);
+
+  useEffect(() => {
+    if (lotFilter !== null && lotFilter !== undefined) {
+      sessionStorage.setItem(`po_${orderId}_lotFilter`, lotFilter);
+    }
+  }, [orderId, lotFilter]);
+
+  useEffect(() => {
+    if (quantityFilter !== null && quantityFilter !== undefined) {
+      sessionStorage.setItem(`po_${orderId}_quantityFilter`, quantityFilter);
+    }
+  }, [orderId, quantityFilter]);
 
   useEffect(() => {
     document.title = `Chi tiết Production Order #${orderId}`;
@@ -323,8 +383,6 @@ export default function ProductionOrderDetailPage() {
         plannedMaterials.push(item);
       });
 
-      setMaterialsPlannedBatches(plannedMaterials);
-      setMaterialsUnplannedBatches(unplanned);
       let finalMaterials = [];
       plannedMaterials.forEach((material) => {
         if (
@@ -340,7 +398,15 @@ export default function ProductionOrderDetailPage() {
       });
 
       unplanned.forEach((material) => {
-        if (finalMaterials.some((m) => m.id === material.id)) return;
+        if (
+          finalMaterials.some(
+            (m) =>
+              m.id === material.id &&
+              m.batchCode === material.batchCode &&
+              m.ingredientCode === material.ingredientCode,
+          )
+        )
+          return;
         finalMaterials.push(material);
       });
 
@@ -429,14 +495,46 @@ export default function ProductionOrderDetailPage() {
     return filteredAndGroupedMaterials.slice(startIndex, endIndex);
   }, [filteredAndGroupedMaterials, materialsCurrentPage]);
 
-  // Update total counts/pages
-  useEffect(() => {
-    setMaterialsTotalCount(filteredAndGroupedMaterials.length);
-    const total = Math.ceil(
-      filteredAndGroupedMaterials.length / materialsPerPage,
+  const paginatedBatches = useMemo(() => {
+    const startIndex = (currentPage - 1) * batchesPerPage;
+    return batches.slice(startIndex, startIndex + batchesPerPage);
+  }, [batches, currentPage]);
+
+  const batchesTotalPages = useMemo(
+    () => Math.ceil(batches.length / batchesPerPage) || 1,
+    [batches.length],
+  );
+
+  const materialsTotalCount = useMemo(
+    () => filteredAndGroupedMaterials.length,
+    [filteredAndGroupedMaterials.length],
+  );
+
+  const materialsTotalPages = useMemo(() => {
+    return (
+      Math.ceil(filteredAndGroupedMaterials.length / materialsPerPage) || 1
     );
-    setMaterialsTotalPages(total || 1);
-  }, [filteredAndGroupedMaterials.length]);
+  }, [filteredAndGroupedMaterials.length, materialsPerPage]);
+
+  // Update total counts/pages
+  const resetMaterialsPage = () => {
+    setMaterialsCurrentPage(1);
+  };
+
+  const handleIngredientCodeChange = (value) => {
+    setIngredientCodeFilter(value);
+    resetMaterialsPage();
+  };
+
+  const handleLotFilterChange = (value) => {
+    setLotFilter(value);
+    resetMaterialsPage();
+  };
+
+  const handleQuantityFilterChange = (value) => {
+    setQuantityFilter(value);
+    resetMaterialsPage();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -697,8 +795,8 @@ export default function ProductionOrderDetailPage() {
                 </tr>
               )}
 
-              {batches.length > 0 &&
-                batches.map((batch, index) => {
+              {paginatedBatches.length > 0 &&
+                paginatedBatches.map((batch, index) => {
                   let status = "";
                   let bgColor = "";
                   const isRunning = batchCodesWithMaterials.some(
@@ -766,7 +864,7 @@ export default function ProductionOrderDetailPage() {
             id="paginationControls"
             style={{
               marginTop: "20px",
-              display: "flex",
+              display: batches.length > 0 ? "flex" : "none",
               justifyContent: "center",
               alignItems: "center",
               gap: "15px",
@@ -775,18 +873,21 @@ export default function ProductionOrderDetailPage() {
           >
             <button
               id="prevBtn"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
               style={{
-                background: "#007aff",
+                background: currentPage <= 1 ? "#ccc" : "#007aff",
                 color: "white",
                 border: "none",
                 borderRadius: "6px",
                 padding: "8px 12px",
-                cursor: "pointer",
+                cursor: currentPage <= 1 ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 transition: "background 0.3s ease, opacity 0.3s ease",
                 fontSize: "16px",
+                opacity: currentPage <= 1 ? 0.6 : 1,
               }}
             >
               <svg
@@ -811,22 +912,29 @@ export default function ProductionOrderDetailPage() {
                 textAlign: "center",
               }}
             >
-              Trang 0 / 1
+              Trang {currentPage} / {batchesTotalPages} (Tổng: {batches.length})
             </span>
             <button
               id="nextBtn"
+              onClick={() =>
+                setCurrentPage((p) => Math.min(batchesTotalPages, p + 1))
+              }
+              disabled={currentPage >= batchesTotalPages}
               style={{
-                background: "#007aff",
+                background:
+                  currentPage >= batchesTotalPages ? "#ccc" : "#007aff",
                 color: "white",
                 border: "none",
                 borderRadius: "6px",
                 padding: "8px 12px",
-                cursor: "pointer",
+                cursor:
+                  currentPage >= batchesTotalPages ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 transition: "background 0.3s ease, opacity 0.3s ease",
                 fontSize: "16px",
+                opacity: currentPage >= batchesTotalPages ? 0.6 : 1,
               }}
             >
               <svg
@@ -1135,8 +1243,7 @@ export default function ProductionOrderDetailPage() {
                 id="filterIngredientCode"
                 value={ingredientCodeFilter}
                 onChange={(e) => {
-                  setIngredientCodeFilter(e.target.value);
-                  setMaterialsCurrentPage(1);
+                  handleIngredientCodeChange(e.target.value);
                 }}
                 placeholder="Nhập mã nguyên liệu..."
                 style={{
@@ -1164,8 +1271,7 @@ export default function ProductionOrderDetailPage() {
                 id="filterLot"
                 value={lotFilter}
                 onChange={(e) => {
-                  setLotFilter(e.target.value);
-                  setMaterialsCurrentPage(1);
+                  handleLotFilterChange(e.target.value);
                 }}
                 placeholder="Nhập lot..."
                 style={{
@@ -1192,8 +1298,7 @@ export default function ProductionOrderDetailPage() {
                 id="filterQuantity"
                 value={quantityFilter}
                 onChange={(e) => {
-                  setQuantityFilter(e.target.value);
-                  setMaterialsCurrentPage(1);
+                  handleQuantityFilterChange(e.target.value);
                 }}
                 placeholder="Nhập số lượng..."
                 style={{
@@ -1336,7 +1441,7 @@ export default function ProductionOrderDetailPage() {
                     : 0;
                   const recipeQuantity =
                     ingredientsTotalsByUOM[ingredientCodeOnly]?.total || 0;
-                  const poQuantity = parseFloat(order?.Quantity) || 1;
+                  const poQuantity = parseFloat(order?.ProductQuantity) || 1;
 
                   let planQ = recipeQuantity;
                   if (batchQuantity !== 0) {
@@ -1928,7 +2033,7 @@ export default function ProductionOrderDetailPage() {
                       .trim();
                     const recipeQuantity =
                       ingredientsTotalsByUOM[code]?.total || 0;
-                    const poQuantity = parseFloat(order?.Quantity) || 1;
+                    const poQuantity = parseFloat(order?.ProductQuantity) || 1;
 
                     let planQVal = "N/A";
                     if (recipeQuantity > 0 && batchQuantity > 0) {
