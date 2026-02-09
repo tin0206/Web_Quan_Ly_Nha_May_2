@@ -778,12 +778,10 @@ export default function ProductionOrderDetailPage() {
                         openRecipeDetailsModal({ recipeCode: code });
                       }
                       if (item.id === "detailRecipeVersion") {
-                        const code = (order?.RecipeCode || "")
-                          .split(" - ")[0]
-                          .trim();
-                        const version = order?.RecipeVersion || "";
-                        if (!code) return;
-                        openRecipeDetailsModal({ recipeCode: code, version });
+                        window.open(
+                          "/recipe-detail/" + order?.RecipeDetailsId,
+                          "_blank",
+                        );
                       }
                     }}
                   >
