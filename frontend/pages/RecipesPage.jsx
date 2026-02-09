@@ -12,6 +12,10 @@ export default function RecipesPage() {
     active: 0,
     totalVersions: 0,
   });
+  // Group modal state
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupModalCode, setGroupModalCode] = useState("");
+  const [groupModalItems, setGroupModalItems] = useState([]);
   const getStoredState = () => {
     try {
       const raw = sessionStorage.getItem(STATE_KEY);
@@ -571,76 +575,181 @@ export default function RecipesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recipes.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan="8"
-                        style={{
-                          textAlign: "center",
-                          color: "#888",
-                          padding: "20px",
-                        }}
-                      >
-                        Không có công thức nào
-                      </td>
-                    </tr>
-                  ) : (
-                    recipes.map((recipe, idx) => (
-                      <tr key={idx}>
-                        <td>{recipe.RecipeDetailsId || ""}</td>
-                        <td>{recipe.ProductCode || ""}</td>
-                        <td>{recipe.ProductName || ""}</td>
-                        <td style={{ maxWidth: "300px" }}>
-                          {recipe.RecipeCode || ""} - {recipe.RecipeName || ""}
-                        </td>
-                        <td>{recipe.Version || ""}</td>
-                        <td style={{ textAlign: "center" }}>
-                          <span
-                            className={`status-badge status-${
-                              recipe.RecipeStatus === "Active"
-                                ? "success"
-                                : "inactive"
-                            }`}
-                          >
-                            {recipe.RecipeStatus === "Active"
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </td>
-                        <td>
-                          {recipe.timestamp
-                            ? formatDateTime(recipe.timestamp)
-                            : ""}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <Link
-                            to={`/recipe-detail/${recipe.RecipeDetailsId}`}
-                            className="detail-btn"
-                            title="Xem chi tiết"
+                  {(() => {
+                    if (recipes.length === 0) {
+                      return (
+                        <tr>
+                          <td
+                            colSpan="8"
                             style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              cursor: "pointer",
-                              color: "#6259ee",
-                              fontSize: "18px",
-                              display: "inline-block",
+                              textAlign: "center",
+                              color: "#888",
+                              padding: "20px",
                             }}
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="24"
-                              height="24"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                            >
-                              <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
-                            </svg>
-                          </Link>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                            Không có công thức nào
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // Group by RecipeCode
+                    const groups = new Map();
+                    for (const r of recipes) {
+                      const key = r.RecipeCode || "";
+                      if (!groups.has(key)) groups.set(key, []);
+                      groups.get(key).push(r);
+                    }
+
+                    // Sort each group by Version desc (numeric) then timestamp desc
+                    const parseVer = (v) => {
+                      const n = parseInt(v, 10);
+                      return isNaN(n) ? -Infinity : n;
+                    };
+
+                    const rows = [];
+                    [...groups.entries()].forEach(([code, items], gi) => {
+                      const sorted = [...items].sort((a, b) => {
+                        const va = parseVer(a.Version);
+                        const vb = parseVer(b.Version);
+                        if (vb !== va) return vb - va;
+                        const ta = a.timestamp
+                          ? new Date(a.timestamp).getTime()
+                          : 0;
+                        const tb = b.timestamp
+                          ? new Date(b.timestamp).getTime()
+                          : 0;
+                        return tb - ta;
+                      });
+
+                      if (sorted.length <= 1) {
+                        // Render single item as normal row
+                        const r = sorted[0];
+                        rows.push(
+                          <tr key={`single-${gi}`}>
+                            <td>{r?.RecipeDetailsId || ""}</td>
+                            <td>{r?.ProductCode || ""}</td>
+                            <td>{r?.ProductName || ""}</td>
+                            <td style={{ maxWidth: "300px" }}>
+                              {(r?.RecipeCode || "") +
+                                " - " +
+                                (r?.RecipeName || "")}
+                            </td>
+                            <td>{r?.Version || ""}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <span
+                                className={`status-badge status-${
+                                  r?.RecipeStatus === "Active"
+                                    ? "success"
+                                    : "inactive"
+                                }`}
+                              >
+                                {r?.RecipeStatus === "Active"
+                                  ? "Active"
+                                  : "Inactive"}
+                              </span>
+                            </td>
+                            <td>
+                              {r?.timestamp ? formatDateTime(r.timestamp) : ""}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <Link
+                                to={`/recipe-detail/${r?.RecipeDetailsId}`}
+                                className="detail-btn"
+                                title="Xem chi tiết"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  color: "#6259ee",
+                                  fontSize: "18px",
+                                  display: "inline-block",
+                                }}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                >
+                                  <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                                </svg>
+                              </Link>
+                            </td>
+                          </tr>,
+                        );
+                      } else {
+                        // Render grouped summary row
+                        const latest = sorted[0];
+                        const openGroup = () => {
+                          setGroupModalCode(code);
+                          setGroupModalItems(sorted);
+                          setIsGroupModalOpen(true);
+                        };
+
+                        rows.push(
+                          <tr key={`group-${gi}`}>
+                            <td>{`${sorted.length} items`}</td>
+                            <td>{latest?.ProductCode || ""}</td>
+                            <td>{latest?.ProductName || ""}</td>
+                            <td style={{ maxWidth: "300px" }}>
+                              {(latest?.RecipeCode || "") +
+                                " - " +
+                                (latest?.RecipeName || "")}
+                            </td>
+                            <td>{`${sorted.length} versions`}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <span
+                                className={`status-badge status-${
+                                  latest?.RecipeStatus === "Active"
+                                    ? "success"
+                                    : "inactive"
+                                }`}
+                              >
+                                {latest?.RecipeStatus === "Active"
+                                  ? "Active"
+                                  : "Inactive"}
+                              </span>
+                            </td>
+                            <td>
+                              {latest?.timestamp
+                                ? formatDateTime(latest.timestamp)
+                                : ""}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button
+                                className="detail-btn"
+                                title="Xem các phiên bản"
+                                onClick={openGroup}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  color: "#6259ee",
+                                  fontSize: "18px",
+                                }}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                >
+                                  <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>,
+                        );
+                      }
+                    });
+
+                    return rows;
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -693,6 +802,148 @@ export default function RecipesPage() {
           )}
         </div>
       </div>
+      {/* Group Versions Modal */}
+      {isGroupModalOpen && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsGroupModalOpen(false);
+          }}
+        >
+          <div
+            className="modal-content"
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              maxWidth: "1100px",
+              width: "95%",
+              maxHeight: "85vh",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 18px",
+                borderBottom: "1px solid #eee",
+                background: "#f9fafb",
+              }}
+            >
+              <h3 style={{ margin: 0 }}>
+                Danh sách phiên bản theo RecipeCode:{" "}
+                <span style={{ color: "#6259ee" }}>{groupModalCode}</span>
+              </h3>
+              <button
+                onClick={() => setIsGroupModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "20px",
+                  color: "#555",
+                }}
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: "12px 18px",
+                borderBottom: "1px solid #f0f0f0",
+              }}
+            >
+              <span style={{ color: "#666" }}>
+                Tổng: <strong>{groupModalItems.length}</strong> phiên bản
+              </span>
+            </div>
+
+            <div style={{ padding: "0 18px 18px", overflow: "auto" }}>
+              <table className="data-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Mã Sản Phẩm</th>
+                    <th>Tên Sản Phẩm</th>
+                    <th>Mã Công Thức</th>
+                    <th>Phiên Bản</th>
+                    <th style={{ textAlign: "center" }}>Trạng Thái</th>
+                    <th>Cập Nhật</th>
+                    <th style={{ textAlign: "center" }}>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupModalItems.map((r, i) => (
+                    <tr key={i}>
+                      <td>{r?.RecipeDetailsId || ""}</td>
+                      <td>{r?.ProductCode || ""}</td>
+                      <td>{r?.ProductName || ""}</td>
+                      <td style={{ maxWidth: "300px" }}>
+                        {(r?.RecipeCode || "") + " - " + (r?.RecipeName || "")}
+                      </td>
+                      <td>{r?.Version || ""}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span
+                          className={`status-badge status-${
+                            r?.RecipeStatus === "Active"
+                              ? "success"
+                              : "inactive"
+                          }`}
+                        >
+                          {r?.RecipeStatus === "Active" ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td>{r?.timestamp ? formatDateTime(r.timestamp) : ""}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <Link
+                          to={`/recipe-detail/${r?.RecipeDetailsId}`}
+                          className="detail-btn"
+                          title="Xem chi tiết"
+                          onClick={() => setIsGroupModalOpen(false)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            color: "#6259ee",
+                            fontSize: "18px",
+                            display: "inline-block",
+                          }}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+                          </svg>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

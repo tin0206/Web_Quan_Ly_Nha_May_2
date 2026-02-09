@@ -60,6 +60,42 @@ export default function ProductionOrderDetailPage() {
   const [isMaterialDetailModalOpen, setIsMaterialDetailModalOpen] =
     useState(false);
 
+  // Recipe details modal state
+  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
+  const [recipeModalRows, setRecipeModalRows] = useState([]);
+  const [recipeSelectedVersion, setRecipeSelectedVersion] = useState("");
+
+  const openRecipeDetailsModal = useCallback(
+    async ({ recipeCode, version = "" }) => {
+      if (!recipeCode) return;
+      try {
+        // Build query params
+        const params = new URLSearchParams({ recipeCode });
+        if (version) params.set("version", version);
+
+        const res = await fetch(
+          `${API_BASE_URL}/api/production-order-detail/recipe-versions?${params.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+        if (!res.ok) throw new Error("Không lấy được RecipeDetails");
+        const data = await res.json();
+        const rows = Array.isArray(data.data) ? data.data : [];
+        setRecipeModalRows(rows);
+        setRecipeSelectedVersion(version || "");
+        setIsRecipeModalOpen(true);
+      } catch (error) {
+        console.error("Error opening recipe details modal:", error);
+        alert("Lỗi khi tải chi tiết RecipeDetails");
+      }
+    },
+    [],
+  );
+
   const filterOptions = [
     { value: "all", label: "Tất cả" },
     { value: "consumed", label: "Đã tiêu thụ" },
@@ -717,7 +753,40 @@ export default function ProductionOrderDetailPage() {
                   <label style={{ fontWeight: "bold", color: "#666" }}>
                     {item.label}
                   </label>
-                  <p style={{ margin: "5px 0", fontSize: "16px" }} id={item.id}>
+                  <p
+                    style={{
+                      margin: "5px 0",
+                      fontSize: "16px",
+                      cursor:
+                        item.id === "detailRecipeCode" ||
+                        item.id === "detailRecipeVersion"
+                          ? "pointer"
+                          : "default",
+                      color:
+                        item.id === "detailRecipeCode" ||
+                        item.id === "detailRecipeVersion"
+                          ? "#007bff"
+                          : "inherit",
+                    }}
+                    id={item.id}
+                    onClick={() => {
+                      if (item.id === "detailRecipeCode") {
+                        const code = (order?.RecipeCode || "")
+                          .split(" - ")[0]
+                          .trim();
+                        if (!code) return;
+                        openRecipeDetailsModal({ recipeCode: code });
+                      }
+                      if (item.id === "detailRecipeVersion") {
+                        const code = (order?.RecipeCode || "")
+                          .split(" - ")[0]
+                          .trim();
+                        const version = order?.RecipeVersion || "";
+                        if (!code) return;
+                        openRecipeDetailsModal({ recipeCode: code, version });
+                      }
+                    }}
+                  >
                     {item.value}
                   </p>
                 </div>
@@ -2126,6 +2195,273 @@ export default function ProductionOrderDetailPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Details Modal */}
+      {isRecipeModalOpen && (
+        <div
+          id="recipeDetailsModal"
+          style={{
+            display: "flex",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 10000,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={(e) => {
+            if (e.target.id === "recipeDetailsModal")
+              setIsRecipeModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              padding: "24px",
+              maxWidth: "1000px",
+              width: "92%",
+              maxHeight: "85vh",
+              overflow: "auto",
+              boxShadow: "0 8px 24px rgba(0,0,0,.25)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "14px",
+                borderBottom: "1px solid #eee",
+                paddingBottom: "10px",
+              }}
+            >
+              <h2 style={{ margin: 0, color: "#333" }}>Recipe Details</h2>
+              <button
+                id="recipeModalClose"
+                onClick={() => setIsRecipeModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "26px",
+                  cursor: "pointer",
+                  color: "#666",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Summary */}
+            <div
+              id="recipeModalSummary"
+              style={{ marginBottom: "10px", color: "#666", fontSize: "14px" }}
+            >
+              {(() => {
+                const code = (order?.RecipeCode || "").split(" - ")[0].trim();
+                const v = recipeSelectedVersion;
+                const count = recipeModalRows?.length || 0;
+                return `Recipe Code: ${code} ${v ? `(Version: ${v})` : ""} • Records: ${count}`;
+              })()}
+            </div>
+
+            {/* Content */}
+            <div id="recipeModalContent">
+              {recipeModalRows.length === 0 ? (
+                <div style={{ padding: "12px", color: "#999" }}>
+                  Không có dữ liệu
+                </div>
+              ) : (
+                <div style={{ overflow: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f6f6ff" }}>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "80px",
+                          }}
+                        >
+                          ID
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "130px",
+                          }}
+                        >
+                          Product Code
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "90px",
+                          }}
+                        >
+                          Production Line
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "130px",
+                          }}
+                        >
+                          Recipe Code
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "left",
+                          }}
+                        >
+                          Recipe Name
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "100px",
+                          }}
+                        >
+                          Recipe Status
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "80px",
+                          }}
+                        >
+                          Version
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "center",
+                            width: "160px",
+                          }}
+                        >
+                          Timestamp
+                        </th>
+                        <th
+                          style={{
+                            border: "1px solid #eee",
+                            padding: "8px",
+                            textAlign: "left",
+                          }}
+                        >
+                          Product Name
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recipeModalRows.map((r, idx) => (
+                        <tr key={idx}>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.RecipeDetailsId ?? ""}
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            <a
+                              style={{
+                                textDecoration: "none",
+                                color: "#007bff",
+                              }}
+                              href={`/recipe-detail/${r.RecipeDetailsId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {r.ProductCode ?? ""}
+                            </a>
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.ProductionLine ?? ""}
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.RecipeCode ?? ""}
+                          </td>
+                          <td
+                            style={{ border: "1px solid #eee", padding: "6px" }}
+                          >
+                            {r.RecipeName ?? ""}
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.RecipeStatus ?? ""}
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.Version ?? ""}
+                          </td>
+                          <td
+                            style={{
+                              border: "1px solid #eee",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          >
+                            {r.timestamp ? formatDateTime(r.timestamp) : ""}
+                          </td>
+                          <td
+                            style={{ border: "1px solid #eee", padding: "6px" }}
+                          >
+                            {r.ProductName ?? ""}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
