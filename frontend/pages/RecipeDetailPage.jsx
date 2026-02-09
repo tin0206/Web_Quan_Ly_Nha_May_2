@@ -92,10 +92,11 @@ export default function RecipeDetailPage() {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   };
 
-  const handleProcessBtnClick = (processId) => {
-    setViewMode(processId || "all");
-    setActiveTab("ingredients");
-  };
+  // View mode fixed to 'all' to match new layout
+  // (Process buttons removed; filtering via multiselect only)
+  useEffect(() => {
+    setViewMode("all");
+  }, []);
 
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
@@ -159,7 +160,7 @@ export default function RecipeDetailPage() {
   if (loading)
     return (
       <div className="main-container" style={{ padding: "20px" }}>
-        Loading...
+        Đang tải...
       </div>
     );
   if (error)
@@ -223,48 +224,125 @@ export default function RecipeDetailPage() {
       {/* Process Section */}
       <div id="RecipeProcesses" style={{ width: "100%" }}>
         <h2 style={{ marginBottom: "16px" }}>Processes:</h2>
-        <div
-          style={{ display: "flex", flexWrap: "wrap", marginBottom: "12px" }}
-        >
-          <button
-            onClick={() => handleProcessBtnClick("all")}
-            className={`process-btn ${viewMode === "all" ? "active" : ""}`}
-            style={{
-              margin: "0 8px 8px 0",
-              padding: "8px 18px",
-              borderRadius: "6px",
-              border: "1px solid #6259ee",
-              background: viewMode === "all" ? "#d1d1ff" : "#f6f6ff",
-              color: "#6259ee",
-              cursor: "pointer",
-            }}
-          >
-            Tất cả
-          </button>
-          {data.processes.map((p, idx) => (
-            <button
-              key={p.ProcessId || idx}
-              onClick={() => handleProcessBtnClick(String(p.ProcessId))}
-              className={`process-btn ${viewMode === String(p.ProcessId) ? "active" : ""}`}
-              style={{
-                margin: "0 8px 8px 0",
-                padding: "8px 18px",
-                borderRadius: "6px",
-                border: "1px solid #6259ee",
-                background:
-                  viewMode === String(p.ProcessId) ? "#d1d1ff" : "#f6f6ff",
-                color: "#6259ee",
-                cursor: "pointer",
-              }}
-            >
-              {p.ProcessId}
-            </button>
-          ))}
-        </div>
 
         {/* Content Area */}
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Top: Process Info Cards */}
+          {viewMode === "all" && (
+            <div style={{ display: "flex", gap: "24px" }}>
+              <div
+                className="custom-multiselect"
+                ref={dropdownRef}
+                style={{ position: "relative", maxWidth: "320px" }}
+              >
+                <div
+                  onClick={toggleDropdown}
+                  style={{
+                    width: "200px",
+                    height: "33px",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid #6259ee",
+                    background: "#f6f6ff",
+                    color: "#6259ee",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: selectedFilterIds.length === 0 ? "#999" : "#333",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {selectedFilterIds.length === 0
+                      ? "Select processes..."
+                      : selectedFilterIds.length <= 2
+                        ? selectedFilterIds.join(", ")
+                        : `${selectedFilterIds.length} selected`}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "#6259ee" }}>▼</span>
+                </div>
+
+                {dropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "44px",
+                      left: 0,
+                      right: 0,
+                      background: "#fff",
+                      border: "1px solid #ddd",
+                      borderRadius: "6px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                      zIndex: 10,
+                      padding: "8px",
+                      maxHeight: "240px",
+                      overflow: "auto",
+                    }}
+                  >
+                    <label style={dropdownItemExStyle}>
+                      <input
+                        type="checkbox"
+                        checked={selectedFilterIds.length === 0}
+                        onChange={handleFilterSelectAll}
+                        style={{ cursor: "pointer" }}
+                      />
+                      <span>Chọn tất cả</span>
+                    </label>
+                    {data.processes.map((p) => (
+                      <label key={p.ProcessId} style={dropdownItemExStyle}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFilterIds.includes(
+                            String(p.ProcessId),
+                          )}
+                          onChange={() => handleFilterSelect(p.ProcessId)}
+                          style={{ cursor: "pointer" }}
+                        />
+                        <span>{p.ProcessId}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "flex-start",
+                  marginBottom: "16px",
+                }}
+              >
+                {["ingredients", "byproducts", "parameters"].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "6px",
+                      border: "1px solid #6259ee",
+                      background: activeTab === tab ? "#d1d1ff" : "#f6f6ff",
+                      color: "#6259ee",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {tab === "byproducts"
+                      ? "ByProducts"
+                      : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2) Process Info Cards */}
           <div style={{ flex: "0 0 auto", minHeight: "220px" }}>
             {viewMode === "all" ? (
               <div
@@ -428,7 +506,7 @@ export default function RecipeDetailPage() {
             )}
           </div>
 
-          {/* Bottom: Detailed Tabs */}
+          {/* 3) Process Detail Tabs + Content */}
           <div
             style={{
               flex: 1,
@@ -437,127 +515,8 @@ export default function RecipeDetailPage() {
               flexDirection: "column",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
-                marginBottom: "16px",
-              }}
-            >
-              {/* Filter Dropdown (Only for All View) */}
-              {viewMode === "all" && (
-                <div
-                  className="custom-multiselect"
-                  ref={dropdownRef}
-                  style={{ position: "relative", maxWidth: "320px" }}
-                >
-                  <div
-                    onClick={toggleDropdown}
-                    style={{
-                      width: "200px",
-                      height: "33px",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      border: "1px solid #6259ee",
-                      background: "#f6f6ff",
-                      color: "#6259ee",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: selectedFilterIds.length === 0 ? "#999" : "#333",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {selectedFilterIds.length === 0
-                        ? "Select processes..."
-                        : selectedFilterIds.length > 4
-                          ? `${selectedFilterIds.length} selected`
-                          : selectedFilterIds.join(", ")}
-                    </span>
-                    <span style={{ fontSize: "12px", color: "#6259ee" }}>
-                      ▼
-                    </span>
-                  </div>
-
-                  {dropdownOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "44px",
-                        left: 0,
-                        right: 0,
-                        background: "#fff",
-                        border: "1px solid #ddd",
-                        borderRadius: "6px",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                        zIndex: 10,
-                        padding: "8px",
-                        maxHeight: "240px",
-                        overflow: "auto",
-                      }}
-                    >
-                      <label style={dropdownItemExStyle}>
-                        <input
-                          type="checkbox"
-                          checked={selectedFilterIds.length === 0}
-                          onChange={handleFilterSelectAll}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <span>Chọn tất cả</span>
-                      </label>
-                      {data.processes.map((p) => (
-                        <label key={p.ProcessId} style={dropdownItemExStyle}>
-                          <input
-                            type="checkbox"
-                            checked={selectedFilterIds.includes(
-                              String(p.ProcessId),
-                            )}
-                            onChange={() => handleFilterSelect(p.ProcessId)}
-                            style={{ cursor: "pointer" }}
-                          />
-                          <span>{p.ProcessId}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tabs */}
-              {["ingredients", "byproducts", "parameters"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "6px",
-                    border: "1px solid #6259ee",
-                    background: activeTab === tab ? "#d1d1ff" : "#f6f6ff",
-                    color: "#6259ee",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {tab === "byproducts"
-                    ? "ByProducts"
-                    : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </div>
-
             {/* Tab Content */}
             <div>
-              {/* INGREDIENTS */}
               {activeTab === "ingredients" && (
                 <IngredientTab
                   items={getFilteredItems(data.ingredients)}
@@ -565,11 +524,9 @@ export default function RecipeDetailPage() {
                   onDetail={fetchProductDetail}
                 />
               )}
-              {/* BYPRODUCTS */}
               {activeTab === "byproducts" && (
                 <ByProductTab items={getFilteredItems(data.byProducts)} />
               )}
-              {/* PARAMETERS */}
               {activeTab === "parameters" && (
                 <ParameterTab items={getFilteredItems(data.parameters)} />
               )}
@@ -655,6 +612,7 @@ function IngredientTab({ items, viewMode, onDetail }) {
   if (!items || items.length === 0)
     return <div style={{ marginTop: "12px" }}>Không có dữ liệu</div>;
 
+  // Single-process view: show cards
   if (viewMode !== "all") {
     return (
       <div
@@ -672,10 +630,12 @@ function IngredientTab({ items, viewMode, onDetail }) {
     );
   }
 
+  // Group by ProcessId and render tables per process
   const groups = {};
   items.forEach((i) => {
-    if (!groups[i.ProcessId]) groups[i.ProcessId] = [];
-    groups[i.ProcessId].push(i);
+    const pid = i.ProcessId;
+    if (!groups[pid]) groups[pid] = [];
+    groups[pid].push(i);
   });
 
   return (
@@ -710,17 +670,100 @@ function IngredientTab({ items, viewMode, onDetail }) {
               {groupItems.length} ingredient(s)
             </span>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))",
-              gap: "12px",
-            }}
-          >
-            {groupItems.map((i, idx) => (
-              <IngredientCard key={idx} item={i} onDetail={onDetail} />
-            ))}
-          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f6f6ff" }}>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "center",
+                    width: "120px",
+                  }}
+                >
+                  ID
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "center",
+                    width: "160px",
+                  }}
+                >
+                  Code
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "center",
+                  }}
+                >
+                  Tên
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "right",
+                    width: "120px",
+                  }}
+                >
+                  Số lượng
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "center",
+                    width: "120px",
+                  }}
+                >
+                  Đơn vị
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #e5e5f5",
+                    padding: "8px",
+                    textAlign: "center",
+                    width: "140px",
+                  }}
+                >
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupItems.map((i, idx) => (
+                <tr key={idx}>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>
+                    {i.IngredientId || ""}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>
+                    {i.IngredientCode || ""}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>
+                    {i.ItemName || ""}
+                  </td>
+                  <td style={{ textAlign: "right", padding: "10px 8px" }}>
+                    {i.Quantity || ""}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>
+                    {i.UnitOfMeasurement || ""}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>
+                    <button
+                      onClick={() => onDetail(i.IngredientCode || "")}
+                      style={buttonStyle}
+                    >
+                      Xem chi tiết
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ))}
     </div>
