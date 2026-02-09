@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import "../styles/main_style.css";
 
@@ -136,89 +136,61 @@ export default function MaterialsPage() {
   }, [fetchJSON]);
 
   const loadBatches = useCallback(async () => {
-    let items = [];
-    if (selectedPOs.length === 0) {
-      const data = await fetchJSON(
-        `${API_BASE_URL}/api/production-materials/batch-codes`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
+    // Single request to reduce load; backend currently doesn't support CSV PO filter
+    const po = selectedPOs[0];
+    const url = po
+      ? `${API_BASE_URL}/api/production-materials/batch-codes?productionOrderNumber=${encodeURIComponent(po)}`
+      : `${API_BASE_URL}/api/production-materials/batch-codes`;
+    try {
+      const data = await fetchJSON(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      const items = (data.data || []).map((r) =>
+        typeof r === "string"
+          ? r
+          : r?.batchCode === "" || r?.batchCode == null
+            ? "NULL"
+            : String(r.batchCode),
       );
-      items = data.data || [];
-    } else {
-      const seen = new Set();
-      for (const po of selectedPOs) {
-        try {
-          const data = await fetchJSON(
-            `${API_BASE_URL}/api/production-materials/batch-codes?productionOrderNumber=${encodeURIComponent(po)}`,
-            {
-              method: "GET",
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-          for (const r of data.data || []) {
-            const v = r.batchCode ?? "NULL";
-            if (!seen.has(v)) {
-              seen.add(v);
-              items.push({ batchCode: v });
-            }
-          }
-        } catch (e) {
-          console.warn("loadBatches: batch-codes by PO fetch failed", e);
-        }
-      }
-      items.sort((a, b) =>
-        String(a.batchCode).localeCompare(String(b.batchCode)),
+      const deduped = Array.from(new Set(items)).sort((a, b) =>
+        String(a).localeCompare(String(b)),
       );
+      setBatchOptions(deduped);
+    } catch (e) {
+      console.warn("loadBatches failed", e);
+      setBatchOptions([]);
     }
-    setBatchOptions(items.map((r) => r.batchCode ?? "NULL"));
   }, [fetchJSON, selectedPOs]);
 
   const loadIngredients = useCallback(async () => {
-    let items = [];
-    if (selectedPOs.length === 0 && selectedBatches.length === 0) {
-      const data = await fetchJSON(
-        `${API_BASE_URL}/api/production-materials/ingredients`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
+    // Single request using first selected filters to avoid N*M calls
+    const po = selectedPOs[0];
+    const bc = selectedBatches[0];
+    const qs = [];
+    if (po) qs.push(`productionOrderNumber=${encodeURIComponent(po)}`);
+    if (bc) qs.push(`batchCode=${encodeURIComponent(bc)}`);
+    const url = `${API_BASE_URL}/api/production-materials/ingredients${qs.length ? `?${qs.join("&")}` : ""}`;
+    try {
+      const data = await fetchJSON(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      const items = (data.data || []).map((r) =>
+        typeof r === "string"
+          ? r
+          : r?.ingredientCode == null
+            ? "NULL"
+            : String(r.ingredientCode),
       );
-      items = data.data || [];
-    } else {
-      const seen = new Set();
-      const targets = selectedPOs.length > 0 ? selectedPOs : [undefined];
-      const batchTargets =
-        selectedBatches.length > 0 ? selectedBatches : [undefined];
-      for (const po of targets) {
-        for (const bc of batchTargets) {
-          const qs = [];
-          if (po) qs.push(`productionOrderNumber=${encodeURIComponent(po)}`);
-          if (bc) qs.push(`batchCode=${encodeURIComponent(bc)}`);
-          const url = `${API_BASE_URL}/api/production-materials/ingredients${qs.length ? `?${qs.join("&")}` : ""}`;
-          try {
-            const data = await fetchJSON(url, {
-              method: "GET",
-              headers: { "Content-Type": "application/json" },
-            });
-            for (const r of data.data || []) {
-              const v = r.ingredientCode ?? "NULL";
-              if (!seen.has(v)) {
-                seen.add(v);
-                items.push({ ingredientCode: v });
-              }
-            }
-          } catch (e) {
-            console.warn("loadIngredients: ingredients fetch failed", e);
-          }
-        }
-      }
-      items.sort((a, b) =>
-        String(a.ingredientCode).localeCompare(String(b.ingredientCode)),
+      const deduped = Array.from(new Set(items)).sort((a, b) =>
+        String(a).localeCompare(String(b)),
       );
+      setIngredientOptions(deduped);
+    } catch (e) {
+      console.warn("loadIngredients failed", e);
+      setIngredientOptions([]);
     }
-    setIngredientOptions(items.map((r) => r.ingredientCode ?? "NULL"));
   }, [fetchJSON, selectedPOs, selectedBatches]);
 
   const normalizeStatus = (respone) =>
@@ -310,6 +282,18 @@ export default function MaterialsPage() {
     [fetchTotal, fetchItems],
   );
 
+  // Debounce query to avoid multiple rapid calls from cascade effects
+  const queryTimer = useRef(null);
+  const scheduleQuery = useCallback(
+    (page) => {
+      if (queryTimer.current) clearTimeout(queryTimer.current);
+      queryTimer.current = setTimeout(() => {
+        queryAndRender(page);
+      }, 300);
+    },
+    [queryAndRender],
+  );
+
   // Initialize
   useEffect(() => {
     // Close dropdowns on outside click
@@ -325,12 +309,14 @@ export default function MaterialsPage() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
+  const isInit = useRef(true);
   useEffect(() => {
     (async () => {
       await loadPOs();
       await loadBatches();
       await loadIngredients();
       await queryAndRender(currentPage);
+      isInit.current = false;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -371,25 +357,26 @@ export default function MaterialsPage() {
 
   // When parent filters change, reload cascades and go to page 1
   useEffect(() => {
+    if (isInit.current) return;
     (async () => {
       await loadBatches();
       await loadIngredients();
-      await queryAndRender(1);
+      scheduleQuery(1);
     })();
-  }, [selectedPOs, loadBatches, loadIngredients, queryAndRender]);
+  }, [selectedPOs, loadBatches, loadIngredients, scheduleQuery]);
 
   useEffect(() => {
+    if (isInit.current) return;
     (async () => {
       await loadIngredients();
-      await queryAndRender(1);
+      scheduleQuery(1);
     })();
-  }, [selectedBatches, loadIngredients, queryAndRender]);
+  }, [selectedBatches, loadIngredients, scheduleQuery]);
 
   useEffect(() => {
-    (async () => {
-      await queryAndRender(1);
-    })();
-  }, [selectedIngredients, selectedResults, dateFrom, dateTo, queryAndRender]);
+    if (isInit.current) return;
+    scheduleQuery(1);
+  }, [selectedIngredients, selectedResults, dateFrom, dateTo, scheduleQuery]);
 
   const handleSelectToggle = (list, setList, value) => {
     setList((prev) =>
@@ -411,14 +398,14 @@ export default function MaterialsPage() {
     setDateFrom(todayStr);
     setDateTo(todayStr);
     setCurrentPage(1);
-    queryAndRender(1);
+    scheduleQuery(1);
   };
 
   const handlePrevPage = () => {
-    if (currentPage > 1) queryAndRender(currentPage - 1);
+    if (currentPage > 1) scheduleQuery(currentPage - 1);
   };
   const handleNextPage = () => {
-    if (currentPage < totalPages) queryAndRender(currentPage + 1);
+    if (currentPage < totalPages) scheduleQuery(currentPage + 1);
   };
 
   const selectedText = (values) => `${values?.length || 0} selected`;
@@ -561,7 +548,7 @@ export default function MaterialsPage() {
                     style={{ color: selectedPOs.length ? "#333" : "#999" }}
                     onClick={() => setOpenPO((o) => !o)}
                   >
-                    {selectedLabel(selectedPOs, 1)}
+                    {selectedLabel(selectedPOs, 1) || "Select POs"}
                   </span>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -691,7 +678,7 @@ export default function MaterialsPage() {
                       }}
                       onClick={() => setOpenBatch((o) => !o)}
                     >
-                      {selectedLabel(selectedBatches, 4)}
+                      {selectedLabel(selectedBatches, 4) || "Select Batches"}
                     </span>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -826,7 +813,8 @@ export default function MaterialsPage() {
                       }}
                       onClick={() => setOpenIngredient((o) => !o)}
                     >
-                      {selectedLabel(selectedIngredients, 1)}
+                      {selectedLabel(selectedIngredients, 1) ||
+                        "Select Ingredients"}
                     </span>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -962,7 +950,9 @@ export default function MaterialsPage() {
                       }}
                       onClick={() => setOpenResult((o) => !o)}
                     >
-                      {selectedText(selectedResults)}
+                      {selectedResults.length
+                        ? selectedText(selectedResults)
+                        : "Select Results"}
                     </span>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
