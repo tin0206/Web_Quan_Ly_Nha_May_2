@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import "../styles/po_recipes_style.css";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const LINE = import.meta.env.VITE_LINE;
 const STATE_KEY = "recipesListState";
 
 export default function RecipesPage() {
@@ -23,7 +23,7 @@ export default function RecipesPage() {
 
   const storedState = getStoredState();
   const [recipes, setRecipes] = useState([]);
-  const [viewMode, setViewMode] = useState("table"); // 'grid' or 'table'
+  const [viewMode, setViewMode] = useState("table");
   const [search, setSearch] = useState(storedState?.filterSearch ?? "");
   const [selectedStatuses, setSelectedStatuses] = useState(
     Array.isArray(storedState?.selectedStatuses)
@@ -242,9 +242,7 @@ export default function RecipesPage() {
                   <p>Quản lý dữ liệu chính công thức</p>
                 </div>
               </div>
-              <div className="badge-cs1">
-                {import.meta.env.VITE_LINE || "Line 1"}
-              </div>
+              <div className="badge-cs1">{LINE}</div>
             </div>
           </div>
 

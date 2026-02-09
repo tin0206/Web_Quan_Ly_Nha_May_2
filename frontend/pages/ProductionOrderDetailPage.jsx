@@ -3,8 +3,7 @@ import { useParams } from "react-router-dom";
 import "../styles/main_style.css";
 import "../styles/po_detail_style.css";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ProductionOrderDetailPage() {
   const { orderId } = useParams();

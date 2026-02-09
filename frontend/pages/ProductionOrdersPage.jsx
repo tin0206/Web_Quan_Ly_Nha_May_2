@@ -2,10 +2,9 @@ import { Link } from "react-router-dom";
 import { useState, useEffect, useCallback, useRef } from "react";
 import "../styles/main_style.css";
 
-const PLANTCODE = import.meta.env.VITE_PLANTCODE || "MIP";
-const LINE = import.meta.env.VITE_LINE || "CS1";
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const PLANTCODE = import.meta.env.VITE_PLANTCODE;
+const LINE = import.meta.env.VITE_LINE;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ProductionOrdersPage() {
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -474,14 +473,13 @@ export default function ProductionOrdersPage() {
   // Determine status type based on status code/text
   function getStatusType(status) {
     if (!status && status !== 0) return "warning";
-
     // Handle numeric status codes
     if (typeof status === "number") {
       switch (status) {
         case 0:
           return "pending"; // Failed/Error
         case 1:
-          return "warning"; // Running/In Progress
+          return "running"; // Running/In Progress
         case 2:
           return "success"; // Completed
         default:
@@ -721,7 +719,7 @@ export default function ProductionOrdersPage() {
         </div>
 
         {/* Search and Filter Section */}
-        <div className="search-section">
+        <div className="search-section-container">
           <div className="first-search-section">
             <div className="search-bar">
               <i className="fa-solid fa-search"></i>
@@ -1232,7 +1230,7 @@ export default function ProductionOrdersPage() {
         </div>
 
         {/* Table Section */}
-        <div className="table-section">
+        <div className="table-section" style={{ overflowX: "auto" }}>
           {viewMode === "table" && (
             <table className="data-table">
               <thead>
