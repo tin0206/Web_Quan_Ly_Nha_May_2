@@ -7,7 +7,6 @@ const API_BASE_URL =
 const STATE_KEY = "recipesListState";
 
 export default function RecipesPage() {
-  // --- State ---
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
