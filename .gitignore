@@ -8,3 +8,5 @@ frontend/node_modules/
 # Keep example env files
 !**/.env.example
 !**/.env.*.example
+
+instruction.txt
