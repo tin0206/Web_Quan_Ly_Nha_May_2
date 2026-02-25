@@ -171,429 +171,459 @@ export default function RecipeDetailPage() {
     );
 
   return (
-    <div className="main-container">
-      {/* Header */}
-      <div className="header-container">
-        <Link className="back-btn" to="/recipes">
-          <i className="fa-solid fa-arrow-left"></i>
-        </Link>
-        <div className="header-text">
-          <h1>Recipe Detail</h1>
-          <p>
-            ID: <strong>{recipeId}</strong>
-          </p>
-        </div>
-      </div>
-
-      {/* Recipe Details Card */}
-      <div
-        id="recipeDetails"
-        style={{ display: "block", marginBottom: "30px" }}
-      >
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: "8px",
-            padding: "30px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-            margin: "0 auto",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
-              gap: "20px",
-              textAlign: "left",
-            }}
+    <>
+      {/* Top Navigation Bar */}
+      <div className="topBar">
+        <a href="/" className="nav-left">
+          <i className="fa-solid fa-home"></i>
+          <span>DashBoard</span>
+        </a>
+        <div className="nav-breadcrumb">
+          <a
+            href="/recipes"
+            style={{ textDecoration: "none", color: "inherit" }}
           >
-            <DetailItem label="Mã Công Thức" value={data.recipe.RecipeCode} />
-            <DetailItem label="Tên Công Thức" value={data.recipe.RecipeName} />
-            <DetailItem label="Phiên Bản" value={data.recipe.Version} />
-            <DetailItem label="Trạng Thái" value={data.recipe.RecipeStatus} />
-            <DetailItem
-              label="Cập Nhật"
-              value={formatDateTime(data.recipe.timestamp)}
-            />
-            <DetailItem label="Mã Sản Phẩm" value={data.recipe.ProductCode} />
-            <DetailItem label="Tên Sản Phẩm" value={data.recipe.ProductName} />
-          </div>
+            Công Thức
+          </a>
         </div>
       </div>
-
-      {/* Process Section */}
-      <div id="RecipeProcesses" style={{ width: "100%" }}>
-        <h2 style={{ marginBottom: "16px" }}>Processes:</h2>
-
-        {/* Content Area */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {viewMode === "all" && (
-            <div style={{ display: "flex", gap: "24px" }}>
-              <div
-                className="custom-multiselect"
-                ref={dropdownRef}
-                style={{ position: "relative", maxWidth: "320px" }}
-              >
-                <div
-                  onClick={toggleDropdown}
-                  style={{
-                    width: "200px",
-                    height: "33px",
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #6259ee",
-                    background: "#f6f6ff",
-                    color: "#6259ee",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "8px",
-                  }}
-                >
-                  <span
-                    style={{
-                      color: selectedFilterIds.length === 0 ? "#999" : "#333",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {selectedFilterIds.length === 0
-                      ? "Select processes..."
-                      : selectedFilterIds.length <= 2
-                        ? selectedFilterIds.join(", ")
-                        : `${selectedFilterIds.length} selected`}
-                  </span>
-                  <span style={{ fontSize: "12px", color: "#6259ee" }}>▼</span>
-                </div>
-
-                {dropdownOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "44px",
-                      left: 0,
-                      right: 0,
-                      background: "#fff",
-                      border: "1px solid #ddd",
-                      borderRadius: "6px",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                      zIndex: 10,
-                      padding: "8px",
-                      maxHeight: "240px",
-                      overflow: "auto",
-                    }}
-                  >
-                    <label style={dropdownItemExStyle}>
-                      <input
-                        type="checkbox"
-                        checked={selectedFilterIds.length === 0}
-                        onChange={handleFilterSelectAll}
-                        style={{ cursor: "pointer" }}
-                      />
-                      <span>Chọn tất cả</span>
-                    </label>
-                    {data.processes.map((p) => (
-                      <label key={p.ProcessId} style={dropdownItemExStyle}>
-                        <input
-                          type="checkbox"
-                          checked={selectedFilterIds.includes(
-                            String(p.ProcessId),
-                          )}
-                          onChange={() => handleFilterSelect(p.ProcessId)}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <span>{p.ProcessId}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "flex-start",
-                  marginBottom: "16px",
-                }}
-              >
-                {["ingredients", "byproducts", "parameters"].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    style={{
-                      padding: "8px 18px",
-                      borderRadius: "6px",
-                      border: "1px solid #6259ee",
-                      background: activeTab === tab ? "#d1d1ff" : "#f6f6ff",
-                      color: "#6259ee",
-                      cursor: "pointer",
-                      fontWeight: 500,
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {tab === "byproducts"
-                      ? "ByProducts"
-                      : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 2) Process Info Cards */}
-          <div style={{ flex: "0 0 auto", minHeight: "220px" }}>
-            {viewMode === "all" ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  flexWrap: "nowrap",
-                  gap: "12px",
-                  overflowX: "auto",
-                  overflowY: "hidden",
-                  paddingBottom: "8px",
-                }}
-              >
-                {getFilteredProcessesWithIndex().map(({ p: process, idx }) => {
-                  const product = data.products[idx];
-                  return (
-                    <div
-                      key={process.ProcessId}
-                      style={{
-                        flex: "0 0 auto",
-                        minWidth: "320px",
-                        margin: "0 0 8px 0",
-                        padding: "16px 24px",
-                        background: "#fff",
-                        borderRadius: "8px",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                        minHeight: "180px",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <h3 style={{ marginBottom: "10px" }}>
-                        Process:{" "}
-                        <span style={{ color: "#6259ee" }}>
-                          {process.ProcessId}
-                        </span>
-                      </h3>
-                      <div>
-                        <b>Process Code:</b> {process.ProcessCode || "-"}
-                      </div>
-                      <div>
-                        <b>Process Name:</b> {process.ProcessName || "-"}
-                      </div>
-                      <div>
-                        <b>Duration:</b> {process.Duration ?? "-"}
-                      </div>
-                      <div>
-                        <b>Duration UoM:</b> {process.DurationUoM || "N/A"}
-                      </div>
-
-                      <div style={{ marginTop: "12px" }}>
-                        <b>Product ID:</b> {product?.ProductId || "-"}
-                      </div>
-                      <div>
-                        <b>Product Code:</b> {product?.ProductCode || "-"}
-                      </div>
-                      <div>
-                        <b>Product Name:</b> {product?.ItemName || "-"}
-                      </div>
-                      <div>
-                        <b>Plan Quantity:</b> {product?.PlanQuantity || "-"}{" "}
-                        {product?.UnitOfMeasurement || ""}
-                      </div>
-                      {product?.ProductId && (
-                        <div style={{ marginTop: "8px" }}>
-                          <button
-                            onClick={() =>
-                              fetchProductDetail(product.ProductCode)
-                            }
-                            style={buttonStyle}
-                          >
-                            Xem chi tiết
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              // Single View
-              (() => {
-                const processIndex = data.processes.findIndex(
-                  (p) => String(p.ProcessId) === viewMode,
-                );
-                const process = data.processes[processIndex];
-                const product = data.products[processIndex];
-                if (!process) return null;
-
-                return (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "10px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...cardStyle,
-                        minHeight: "180px",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <h3 style={{ marginBottom: "10px" }}>
-                        Process:{" "}
-                        <span style={{ color: "#6259ee" }}>
-                          {process.ProcessId}
-                        </span>
-                      </h3>
-                      <div>
-                        <b>Process Code:</b> {process.ProcessCode || "-"}
-                      </div>
-                      <div>
-                        <b>Process Name:</b> {process.ProcessName || "-"}
-                      </div>
-                      <div>
-                        <b>Duration:</b>{" "}
-                        {process.Duration === null ? "-" : process.Duration}
-                      </div>
-                      <div>
-                        <b>Duration UoM:</b>{" "}
-                        {process.DurationUoM === ""
-                          ? "N/A"
-                          : process.DurationUoM}
-                      </div>
-                    </div>
-                    <div style={{ ...cardStyle, minHeight: "100px" }}>
-                      <div>
-                        <b>Product ID:</b> {product ? product.ProductId : "-"}
-                      </div>
-                      <div>
-                        <b>Product Code:</b>{" "}
-                        {product ? product.ProductCode : "-"}
-                      </div>
-                      <div>
-                        <b>Product Name:</b> {product ? product.ItemName : "-"}
-                      </div>
-                      <div>
-                        <b>Plan Quantity:</b>{" "}
-                        {product ? product.PlanQuantity : "-"}{" "}
-                        {product ? product.UnitOfMeasurement : ""}
-                      </div>
-                      {product?.ProductId && (
-                        <div style={{ marginTop: "8px" }}>
-                          <button
-                            onClick={() =>
-                              fetchProductDetail(product.ProductCode)
-                            }
-                            style={buttonStyle}
-                          >
-                            Xem chi tiết
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-          </div>
-
-          {/* 3) Process Detail Tabs + Content */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: "180px",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {/* Tab Content */}
-            <div>
-              {activeTab === "ingredients" && (
-                <IngredientTab
-                  items={getFilteredItems(data.ingredients)}
-                  viewMode={viewMode}
-                  onDetail={fetchProductDetail}
-                />
-              )}
-              {activeTab === "byproducts" && (
-                <ByProductTab items={getFilteredItems(data.byProducts)} />
-              )}
-              {activeTab === "parameters" && (
-                <ParameterTab items={getFilteredItems(data.parameters)} />
-              )}
-            </div>
+      <div className="main-container">
+        {/* Header */}
+        <div className="header-container">
+          <Link className="back-btn" to="/recipes">
+            <i className="fa-solid fa-arrow-left"></i>
+          </Link>
+          <div className="header-text">
+            <h1>Recipe Detail</h1>
+            <p>
+              ID: <strong>{recipeId}</strong>
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Modal */}
-      {modal.isOpen && (
+        {/* Recipe Details Card */}
         <div
-          style={{
-            display: "flex",
-            position: "fixed",
-            zIndex: 1000,
-            inset: 0,
-            background: "rgba(0,0,0,.3)",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-          onClick={closeModal}
+          id="recipeDetails"
+          style={{ display: "block", marginBottom: "30px" }}
         >
           <div
             style={{
               background: "#fff",
-              padding: "24px",
-              borderRadius: "10px",
-              boxShadow: "0 4px 24px rgba(0,0,0,.18)",
-              position: "relative",
-              maxWidth: "720px",
-              width: "90%",
-              maxHeight: "90vh",
-              overflowY: "auto",
+              borderRadius: "8px",
+              padding: "30px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              margin: "0 auto",
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <span
-              onClick={closeModal}
+            <div
               style={{
-                position: "absolute",
-                top: "10px",
-                right: "14px",
-                fontSize: "28px",
-                color: "#888",
-                cursor: "pointer",
-                fontWeight: "bold",
+                display: "grid",
+                gridTemplateColumns: "repeat(5, 1fr)",
+                gap: "20px",
+                textAlign: "left",
               }}
             >
-              &times;
-            </span>
-            <h2 style={{ marginTop: 0, marginBottom: "10px" }}>
-              Chi tiết sản phẩm
-            </h2>
-            {modal.loading ? (
-              <div>Đang tải...</div>
-            ) : modal.error ? (
-              <div style={{ color: "red" }}>{modal.error}</div>
-            ) : modal.productData ? (
-              <ProductDetailContent
-                product={modal.productData}
-                formatDateTime={formatDateTime}
+              <DetailItem label="Mã Công Thức" value={data.recipe.RecipeCode} />
+              <DetailItem
+                label="Tên Công Thức"
+                value={data.recipe.RecipeName}
               />
-            ) : null}
+              <DetailItem label="Phiên Bản" value={data.recipe.Version} />
+              <DetailItem label="Trạng Thái" value={data.recipe.RecipeStatus} />
+              <DetailItem
+                label="Cập Nhật"
+                value={formatDateTime(data.recipe.timestamp)}
+              />
+              <DetailItem label="Mã Sản Phẩm" value={data.recipe.ProductCode} />
+              <DetailItem
+                label="Tên Sản Phẩm"
+                value={data.recipe.ProductName}
+              />
+            </div>
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Process Section */}
+        <div id="RecipeProcesses" style={{ width: "100%" }}>
+          <h2 style={{ marginBottom: "16px" }}>Processes:</h2>
+
+          {/* Content Area */}
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+          >
+            {viewMode === "all" && (
+              <div style={{ display: "flex", gap: "24px" }}>
+                <div
+                  className="custom-multiselect"
+                  ref={dropdownRef}
+                  style={{ position: "relative", maxWidth: "320px" }}
+                >
+                  <div
+                    onClick={toggleDropdown}
+                    style={{
+                      width: "200px",
+                      height: "33px",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #6259ee",
+                      background: "#f6f6ff",
+                      color: "#6259ee",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: selectedFilterIds.length === 0 ? "#999" : "#333",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectedFilterIds.length === 0
+                        ? "Select processes..."
+                        : selectedFilterIds.length <= 2
+                          ? selectedFilterIds.join(", ")
+                          : `${selectedFilterIds.length} selected`}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "#6259ee" }}>
+                      ▼
+                    </span>
+                  </div>
+
+                  {dropdownOpen && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "44px",
+                        left: 0,
+                        right: 0,
+                        background: "#fff",
+                        border: "1px solid #ddd",
+                        borderRadius: "6px",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        zIndex: 10,
+                        padding: "8px",
+                        maxHeight: "240px",
+                        overflow: "auto",
+                      }}
+                    >
+                      <label style={dropdownItemExStyle}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFilterIds.length === 0}
+                          onChange={handleFilterSelectAll}
+                          style={{ cursor: "pointer" }}
+                        />
+                        <span>Chọn tất cả</span>
+                      </label>
+                      {data.processes.map((p) => (
+                        <label key={p.ProcessId} style={dropdownItemExStyle}>
+                          <input
+                            type="checkbox"
+                            checked={selectedFilterIds.includes(
+                              String(p.ProcessId),
+                            )}
+                            onChange={() => handleFilterSelect(p.ProcessId)}
+                            style={{ cursor: "pointer" }}
+                          />
+                          <span>{p.ProcessId}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {["ingredients", "byproducts", "parameters"].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: "6px",
+                        border: "1px solid #6259ee",
+                        background: activeTab === tab ? "#d1d1ff" : "#f6f6ff",
+                        color: "#6259ee",
+                        cursor: "pointer",
+                        fontWeight: 500,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {tab === "byproducts"
+                        ? "ByProducts"
+                        : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2) Process Info Cards */}
+            <div style={{ flex: "0 0 auto", minHeight: "220px" }}>
+              {viewMode === "all" ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    flexWrap: "nowrap",
+                    gap: "12px",
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    paddingBottom: "8px",
+                  }}
+                >
+                  {getFilteredProcessesWithIndex().map(
+                    ({ p: process, idx }) => {
+                      const product = data.products[idx];
+                      return (
+                        <div
+                          key={process.ProcessId}
+                          style={{
+                            flex: "0 0 auto",
+                            minWidth: "320px",
+                            margin: "0 0 8px 0",
+                            padding: "16px 24px",
+                            background: "#fff",
+                            borderRadius: "8px",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                            minHeight: "180px",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <h3 style={{ marginBottom: "10px" }}>
+                            Process:{" "}
+                            <span style={{ color: "#6259ee" }}>
+                              {process.ProcessId}
+                            </span>
+                          </h3>
+                          <div>
+                            <b>Process Code:</b> {process.ProcessCode || "-"}
+                          </div>
+                          <div>
+                            <b>Process Name:</b> {process.ProcessName || "-"}
+                          </div>
+                          <div>
+                            <b>Duration:</b> {process.Duration ?? "-"}
+                          </div>
+                          <div>
+                            <b>Duration UoM:</b> {process.DurationUoM || "N/A"}
+                          </div>
+
+                          <div style={{ marginTop: "12px" }}>
+                            <b>Product ID:</b> {product?.ProductId || "-"}
+                          </div>
+                          <div>
+                            <b>Product Code:</b> {product?.ProductCode || "-"}
+                          </div>
+                          <div>
+                            <b>Product Name:</b> {product?.ItemName || "-"}
+                          </div>
+                          <div>
+                            <b>Plan Quantity:</b> {product?.PlanQuantity || "-"}{" "}
+                            {product?.UnitOfMeasurement || ""}
+                          </div>
+                          {product?.ProductId && (
+                            <div style={{ marginTop: "8px" }}>
+                              <button
+                                onClick={() =>
+                                  fetchProductDetail(product.ProductCode)
+                                }
+                                style={buttonStyle}
+                              >
+                                Xem chi tiết
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              ) : (
+                // Single View
+                (() => {
+                  const processIndex = data.processes.findIndex(
+                    (p) => String(p.ProcessId) === viewMode,
+                  );
+                  const process = data.processes[processIndex];
+                  const product = data.products[processIndex];
+                  if (!process) return null;
+
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...cardStyle,
+                          minHeight: "180px",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <h3 style={{ marginBottom: "10px" }}>
+                          Process:{" "}
+                          <span style={{ color: "#6259ee" }}>
+                            {process.ProcessId}
+                          </span>
+                        </h3>
+                        <div>
+                          <b>Process Code:</b> {process.ProcessCode || "-"}
+                        </div>
+                        <div>
+                          <b>Process Name:</b> {process.ProcessName || "-"}
+                        </div>
+                        <div>
+                          <b>Duration:</b>{" "}
+                          {process.Duration === null ? "-" : process.Duration}
+                        </div>
+                        <div>
+                          <b>Duration UoM:</b>{" "}
+                          {process.DurationUoM === ""
+                            ? "N/A"
+                            : process.DurationUoM}
+                        </div>
+                      </div>
+                      <div style={{ ...cardStyle, minHeight: "100px" }}>
+                        <div>
+                          <b>Product ID:</b> {product ? product.ProductId : "-"}
+                        </div>
+                        <div>
+                          <b>Product Code:</b>{" "}
+                          {product ? product.ProductCode : "-"}
+                        </div>
+                        <div>
+                          <b>Product Name:</b>{" "}
+                          {product ? product.ItemName : "-"}
+                        </div>
+                        <div>
+                          <b>Plan Quantity:</b>{" "}
+                          {product ? product.PlanQuantity : "-"}{" "}
+                          {product ? product.UnitOfMeasurement : ""}
+                        </div>
+                        {product?.ProductId && (
+                          <div style={{ marginTop: "8px" }}>
+                            <button
+                              onClick={() =>
+                                fetchProductDetail(product.ProductCode)
+                              }
+                              style={buttonStyle}
+                            >
+                              Xem chi tiết
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+
+            {/* 3) Process Detail Tabs + Content */}
+            <div
+              style={{
+                flex: 1,
+                minHeight: "180px",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Tab Content */}
+              <div>
+                {activeTab === "ingredients" && (
+                  <IngredientTab
+                    items={getFilteredItems(data.ingredients)}
+                    viewMode={viewMode}
+                    onDetail={fetchProductDetail}
+                  />
+                )}
+                {activeTab === "byproducts" && (
+                  <ByProductTab items={getFilteredItems(data.byProducts)} />
+                )}
+                {activeTab === "parameters" && (
+                  <ParameterTab items={getFilteredItems(data.parameters)} />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal */}
+        {modal.isOpen && (
+          <div
+            style={{
+              display: "flex",
+              position: "fixed",
+              zIndex: 1000,
+              inset: 0,
+              background: "rgba(0,0,0,.3)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+            onClick={closeModal}
+          >
+            <div
+              style={{
+                background: "#fff",
+                padding: "24px",
+                borderRadius: "10px",
+                boxShadow: "0 4px 24px rgba(0,0,0,.18)",
+                position: "relative",
+                maxWidth: "720px",
+                width: "90%",
+                maxHeight: "90vh",
+                overflowY: "auto",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span
+                onClick={closeModal}
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  right: "14px",
+                  fontSize: "28px",
+                  color: "#888",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                &times;
+              </span>
+              <h2 style={{ marginTop: 0, marginBottom: "10px" }}>
+                Chi tiết sản phẩm
+              </h2>
+              {modal.loading ? (
+                <div>Đang tải...</div>
+              ) : modal.error ? (
+                <div style={{ color: "red" }}>{modal.error}</div>
+              ) : modal.productData ? (
+                <ProductDetailContent
+                  product={modal.productData}
+                  formatDateTime={formatDateTime}
+                />
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

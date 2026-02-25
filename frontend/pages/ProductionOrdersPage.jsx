@@ -1278,7 +1278,6 @@ export default function ProductionOrdersPage() {
                           href={`/production-order-detail/${order.ProductionOrderId}`}
                           className="area-badge-link"
                           title="Xem chi tiết Batch"
-                          // onClick="saveCurrentState()"
                         >
                           <div className="area-badge">
                             <div>{order.ProductionOrderNumber}</div>

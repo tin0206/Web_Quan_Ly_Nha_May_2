@@ -2,7 +2,7 @@
   display: flex;
   gap: 10px;
   align-items: center;
-  margin: 20px 0;
+  margin-bottom: 20px;
 }
 
 #filterBatchCodeOptions label {
@@ -20,9 +20,9 @@
 }
 
 #filterBatchCodeOptions label.selected {
-  background: #007bff !important;
+  background: #5b4ce8 !important;
   color: white !important;
-  border-color: #0056b3 !important;
+  border-color: #5b4ce8 !important;
   font-weight: 500 !important;
 }
 

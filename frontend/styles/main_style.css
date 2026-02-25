@@ -539,12 +539,8 @@
 }
 
 .area-badge-link {
-  text-decoration: none;
-  color: #5b4ce8;
-}
-
-.area-badge-link:hover {
   text-decoration: underline;
+  color: #5b4ce8;
 }
 
 .badge-number {
