@@ -202,6 +202,41 @@ export default function ProductionOrderDetailPage() {
   }
 
   function groupMaterials(materialsArray) {
+    function getGroupRespone(items) {
+      if (!items || items.length === 0) {
+        return null;
+      }
+
+      const allSuccess = items.every((item) => item?.respone === "Success");
+      if (allSuccess) {
+        return "Success";
+      }
+
+      const allNull = items.every(
+        (item) =>
+          item?.respone === null ||
+          item?.respone === undefined ||
+          item?.respone === "",
+      );
+      if (allNull) {
+        return null;
+      }
+
+      const allNotNullAndNotSuccess = items.every(
+        (item) =>
+          item?.respone !== null &&
+          item?.respone !== undefined &&
+          item?.respone !== "" &&
+          item?.respone !== "Success",
+      );
+      if (allNotNullAndNotSuccess) {
+        return "Failed";
+      }
+
+      // For any other mixed cases, return null
+      return null;
+    }
+
     const groupMap = new Map();
 
     materialsArray.forEach((material) => {
@@ -217,18 +252,20 @@ export default function ProductionOrderDetailPage() {
           group.totalQuantity += parseFloat(material.quantity) || 0;
           group.items.push(material);
           group.ids.push(material.id);
+          group.respone = getGroupRespone(group.items);
         }
       } else {
         // Create new group
+        const items = [material];
         groupMap.set(key, {
           ingredientCode: material.ingredientCode,
           lot: material.lot,
           unitOfMeasurement: material.unitOfMeasurement,
           totalQuantity: parseFloat(material.quantity) || 0,
-          items: [material],
+          items,
           ids: [material.id],
           latestDatetime: material.datetime,
-          respone: material.respone,
+          respone: getGroupRespone(items),
         });
       }
     });
@@ -1571,16 +1608,6 @@ export default function ProductionOrderDetailPage() {
                     break;
                   }
 
-                  // Status Display
-                  let statusDisplay = "-";
-                  if (group.items.length === 1) {
-                    statusDisplay = group.items[0].respone
-                      ? group.items[0].respone === "Success"
-                        ? "Success"
-                        : "Failed"
-                      : "-";
-                  }
-
                   return (
                     <tr key={index} style={{ borderBottom: "1px solid #eee" }}>
                       <td
@@ -1613,7 +1640,7 @@ export default function ProductionOrderDetailPage() {
                         {formatDateTime(group.latestDatetime) || "-"}
                       </td>
                       <td style={{ padding: "12px", textAlign: "center" }}>
-                        {statusDisplay}
+                        {group.respone || "-"}
                       </td>
                       <td style={{ padding: "12px", textAlign: "center" }}>
                         <button
