@@ -1544,14 +1544,12 @@ export default function ProductionOrderDetailPage() {
                       uniqueBatchCodes.slice(0, 3).join(", ") + ", ...";
                   }
 
-                  // Plan Quantity Calc
                   const ingredientCode = group.ingredientCode;
                   const ingredientCodeOnly = ingredientCode
                     ? ingredientCode.split(" - ")[0].trim()
                     : "";
-                  let totalPlanQuantity = 0;
-                  let hasValidPlan = false;
-                  group.items.forEach((item) => {
+                  let planQuantityDisplay = "N/A";
+                  for (const item of group.items) {
                     const batch = batches.find(
                       (b) => b.BatchNumber === item.batchCode,
                     );
@@ -1560,22 +1558,17 @@ export default function ProductionOrderDetailPage() {
                       : 0;
                     const recipeQuantity =
                       ingredientsTotalsByUOM[ingredientCodeOnly]?.total || 0;
-                    const poQuantity = parseFloat(order?.ProductQuantity) || 1;
-
+                    const poQuantity = parseFloat(order.ProductQuantity) || 1;
                     let planQ = recipeQuantity;
                     if (batchQuantity !== 0) {
                       planQ = (recipeQuantity / poQuantity) * batchQuantity;
+                      planQ = parseFloat(planQ.toFixed(2));
                     }
                     if (recipeQuantity === 0 || batchQuantity === 0) {
-                      return;
+                      continue;
                     }
-                    hasValidPlan = true;
-                    totalPlanQuantity += planQ;
-                  });
-
-                  let planQuantityDisplay = "N/A";
-                  if (hasValidPlan) {
-                    planQuantityDisplay = totalPlanQuantity.toFixed(2);
+                    planQuantityDisplay = planQ.toFixed(2);
+                    break;
                   }
 
                   // Status Display

@@ -568,6 +568,7 @@ export default function RecipesPage() {
                     <th>Mã Sản Phẩm</th>
                     <th>Tên Sản Phẩm</th>
                     <th>Mã Công Thức</th>
+                    <th>Tên Công Thức</th>
                     <th>Phiên Bản</th>
                     <th style={{ textAlign: "center" }}>Trạng Thái</th>
                     <th>Cập Nhật</th>
@@ -580,7 +581,7 @@ export default function RecipesPage() {
                       return (
                         <tr>
                           <td
-                            colSpan="8"
+                            colSpan="9"
                             style={{
                               textAlign: "center",
                               color: "#888",
@@ -631,9 +632,10 @@ export default function RecipesPage() {
                             <td>{r?.ProductCode || ""}</td>
                             <td>{r?.ProductName || ""}</td>
                             <td style={{ maxWidth: "300px" }}>
-                              {(r?.RecipeCode || "") +
-                                " - " +
-                                (r?.RecipeName || "")}
+                              {r?.RecipeCode || ""}
+                            </td>
+                            <td style={{ maxWidth: "300px" }}>
+                              {r?.RecipeName || ""}
                             </td>
                             <td>{r?.Version || ""}</td>
                             <td style={{ textAlign: "center" }}>

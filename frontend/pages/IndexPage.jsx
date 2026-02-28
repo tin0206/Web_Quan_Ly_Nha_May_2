@@ -69,7 +69,7 @@ export default function IndexPage() {
             <div className={styles["card-icon"]}>
               <i className="fa-solid fa-layer-group"></i>
             </div>
-            <div className={styles["card-title"]}>Nguyên Liệu</div>
+            <div className={styles["card-title"]}>ConsumptionLog</div>
             <div className={styles["card-description"]}>
               Quản lý danh mục nguyên liệu và thông tin chi tiết
             </div>
