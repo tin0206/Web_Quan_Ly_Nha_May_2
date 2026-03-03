@@ -2459,17 +2459,7 @@ export default function ProductionOrderDetailPage() {
                                 textAlign: "center",
                               }}
                             >
-                              <a
-                                style={{
-                                  textDecoration: "none",
-                                  color: "#5b4ce8",
-                                }}
-                                href={`/recipe-detail/${r.RecipeDetailsId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {r.ProductCode ?? ""}
-                              </a>
+                              {r.ProductCode ?? ""}
                             </td>
                             <td
                               style={{
@@ -2513,7 +2503,17 @@ export default function ProductionOrderDetailPage() {
                                 textAlign: "center",
                               }}
                             >
-                              {r.Version ?? ""}
+                              <a
+                                style={{
+                                  textDecoration: "underline",
+                                  color: "#5b4ce8",
+                                }}
+                                href={`/recipe-detail/${r.RecipeDetailsId}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {r.Version ?? ""}
+                              </a>
                             </td>
                             <td
                               style={{
